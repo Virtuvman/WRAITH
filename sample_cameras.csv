@@ -1,0 +1,21 @@
+ip,latitude,longitude,device_type,model,location_label,last_seen,port,org,country
+192.168.10.1,38.8951,-77.0364,IP Camera,Hikvision DS-2CD2085G1,Pentagon Area,2026-02-15,554,Comcast,US
+10.0.0.5,38.9072,-77.0369,PTZ Camera,Axis P5655-E,Capitol Hill,2026-01-20,80,Verizon,US
+172.16.0.3,38.8977,-77.0365,Dome Camera,Dahua SD49425XB,Mall of America,2025-09-10,8080,AT&T,US
+10.10.1.7,40.7128,-74.0060,IP Camera,Bosch FLEXIDOME,Times Square,2025-07-04,554,Spectrum,US
+192.168.2.2,34.0522,-118.2437,Bullet Camera,Hanwha XNV-8080R,Hollywood Blvd,2026-03-01,443,Charter,US
+172.20.0.10,41.8781,-87.6298,PTZ Camera,Sony SNC-EP580,Millennium Park,2025-06-15,80,Comcast,US
+10.5.0.11,29.7604,-95.3698,Dome Camera,Hikvision DS-2DE4425IWG,Houston Galleria,2025-08-22,554,AT&T,US
+192.168.5.5,47.6062,-122.3321,IP Camera,Axis Q6135-LE,Pike Place Market,2026-02-28,443,CenturyLink,US
+172.18.0.4,25.7617,-80.1918,PTZ Camera,Dahua SD6CE245U-HNI,Miami Beach,2025-05-10,8080,FiberLight,US
+10.15.0.9,33.4484,-112.0740,Bullet Camera,Bosch MIC-7230-PB4,Phoenix Sky Harbor,2025-12-01,554,Cox,US
+192.168.8.1,32.7767,-96.7970,Dome Camera,Samsung QNV-8080R,Deep Ellum Dallas,2025-10-15,80,Frontier,US
+172.25.0.7,36.1627,-86.7816,IP Camera,Hikvision DS-2CD2T47G2,Nashville Broadway,2026-01-05,443,Comcast,US
+10.20.1.2,39.9526,-75.1652,PTZ Camera,Axis P3737-PLE,Philadelphia Center,2025-07-20,554,Verizon,US
+192.168.15.3,42.3601,-71.0589,Bullet Camera,Dahua IPC-HFW5849S,Boston Common,2025-04-01,8080,RCN,US
+172.30.0.8,37.7749,-122.4194,Dome Camera,Hanwha QNV-8080R,SF Fishermans Wharf,2025-11-30,80,Sonic,US
+10.25.0.6,45.5051,-122.6750,IP Camera,Sony SNC-EM632R,Portland Pearl District,2026-03-10,554,CenturyLink,US
+192.168.20.4,35.2271,-80.8431,PTZ Camera,Axis Q6155-E,Charlotte Uptown,2025-09-25,443,Spectrum,US
+172.35.0.5,44.9778,-93.2650,Bullet Camera,Hikvision DS-2CD2787G2,Minneapolis Nicollet,2025-06-01,8080,Comcast,US
+10.30.0.3,39.7392,-104.9903,Dome Camera,Bosch NBE-6502-AL,Denver Union Station,2026-02-10,554,Lumen,US
+192.168.25.9,30.2672,-97.7431,IP Camera,Dahua IPC-HDW5831R-ZE,Austin 6th Street,2025-08-05,80,Grande,US

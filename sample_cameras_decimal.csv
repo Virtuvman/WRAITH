@@ -1,0 +1,6 @@
+ip,latitude,longitude,device_type,model,location_label,last_seen,port,org,country
+100.64.1.10,38.8951,-77.0364,IP Camera,Hikvision DS-2CD2085G1,Pentagon Area,2026-02-15,554,Comcast,US
+100.64.1.11,40.7128,-74.0060,PTZ Camera,Axis P5655-E,Times Square,2025-09-10,80,Verizon,US
+100.64.1.12,34.0522,-118.2437,Dome Camera,Dahua SD49425XB,Hollywood Blvd,2025-06-01,8080,AT&T,US
+100.64.1.13,41.8781,-87.6298,Bullet Camera,Bosch FLEXIDOME,Millennium Park,2026-03-01,443,Charter,US
+100.64.1.14,47.6062,-122.3321,IP Camera,Hanwha XNV-8080R,Pike Place,2025-07-15,554,CenturyLink,US

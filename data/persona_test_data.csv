@@ -1,0 +1,6 @@
+persona_id,persona_name,role,region,primary_goal,data_source_comfort,technical_level,notes
+P001,Avery Cole,OSINT Analyst,North America,Track stale camera records for monthly reporting,CSV exports only,Beginner,Prefers simple filters and export buttons
+P002,Riley Morgan,PAI Researcher,Europe,Compare region-level staleness trends,CSV and manual notes,Beginner,Needs clear error messages for bad coordinates
+P003,Jordan Lee,Team Lead,Latin America,Generate BLUF summaries for leadership briefs,CSV exports only,Beginner,Requires predictable report format
+P004,Cameron Diaz,Intel Integrator,Africa,Validate ingestion quality before publishing dashboard,CSV + spreadsheet cleanup,Beginner,Wants row-level conflict exports
+P005,Taylor Brooks,Consulting Demo Operator,Middle East,Run polished POC demos for stakeholders,CSV sample packs,Beginner,Needs repeatable demo scenarios
