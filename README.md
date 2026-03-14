@@ -30,7 +30,6 @@ WRAITH is a local-first Streamlit application for ingesting camera OSINT dataset
 │   └── coord_normalizer.py          # Coordinate normalization
 ├── scripts/
 │   └── generate_poc_global_dataset.py
-├── shodan_ingest (1).py             # Optional Shodan ingestion utility
 ├── data/                            # Sample and generated datasets
 ├── docs/                            # Plans, scenarios, templates, session notes
 ├── requirements.txt
@@ -89,18 +88,11 @@ Outputs:
 - `poc_global_500.csv`
 - optional `.xlsx` files if Excel engine is available
 
-### Option C — Pull from Shodan (account-dependent)
+### Option C — External source ingest
 
-1. Copy `env.example` to `.env`
-2. Set `SHODAN_API_KEY=...`
-3. Run:
+External API-based ingestion is currently disabled by default.
 
-```cmd
-set PYTHONUTF8=1
-python "shodan_ingest (1).py" --interactive
-```
-
-> Note: Shodan pulls require sufficient query credits and permissions.
+For now, use CSV imports and local generation workflows only.
 
 ---
 

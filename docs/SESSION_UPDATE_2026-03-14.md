@@ -46,5 +46,5 @@ This update captures code and operational work completed in the local WRAITH wor
 
 1. Keep only one Streamlit instance active (optional cleanup).
 2. Add/pin compatible Folium + Branca versions in `requirements.txt`.
-3. Restore Shodan query capability by adding credits/upgrading account.
+3. Evaluate future external-source integrations only when explicitly enabled.
 4. Continue with controlled ingestion tests and push validated datasets only.

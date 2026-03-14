@@ -226,6 +226,54 @@ def next_color():
     return FILE_COLORS[len(st.session_state.files) % len(FILE_COLORS)]
 
 
+def _parse_last_seen_date(value) -> datetime.date | None:
+    """Parse common date formats (including Excel serial dates) safely."""
+    if value is None:
+        return None
+
+    s = str(value).strip()
+    if not s:
+        return None
+
+    # Fast path for ISO-like values (YYYY-MM-DD or ISO datetime variants).
+    try:
+        return datetime.date.fromisoformat(s[:10])
+    except Exception:
+        pass
+
+    # Try full ISO datetime strings (including trailing Z).
+    try:
+        return datetime.datetime.fromisoformat(s.replace("Z", "+00:00")).date()
+    except Exception:
+        pass
+
+    # Common non-ISO exports.
+    for fmt in (
+        "%m/%d/%Y",
+        "%m-%d-%Y",
+        "%d/%m/%Y",
+        "%d-%m-%Y",
+        "%Y/%m/%d",
+        "%Y.%m.%d",
+        "%b %d %Y",
+        "%d %b %Y",
+    ):
+        try:
+            return datetime.datetime.strptime(s, fmt).date()
+        except Exception:
+            continue
+
+    # Excel serial date fallback (days since 1899-12-30).
+    try:
+        serial = float(s)
+        if 20000 <= serial <= 80000:
+            return (datetime.date(1899, 12, 30) + datetime.timedelta(days=int(serial)))
+    except Exception:
+        pass
+
+    return None
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # STALENESS ENGINE
 # ─────────────────────────────────────────────────────────────────────────────
@@ -235,7 +283,9 @@ def compute_staleness(df):
     statuses, colors, classes, ages = [], [], [], []
     for _, row in df.iterrows():
         try:
-            last   = datetime.date.fromisoformat(str(row["last_seen"])[:10])
+            last = _parse_last_seen_date(row.get("last_seen", ""))
+            if last is None:
+                raise ValueError("Unparseable last_seen")
             months = (today - last).days / 30.44
         except Exception:
             months = 999
@@ -834,7 +884,7 @@ def generate_bluf(files_dict, active_names, status_filter):
         "=" * 64, "",
         "BOTTOM LINE UP FRONT:",
         f"  {total} total cameras across all active regions.",
-        f"  {expired} EXPIRED (>6mo)  — immediate Shodan refresh required.",
+        f"  {expired} EXPIRED (>6mo)  — immediate source-data refresh required.",
         f"  {stale} STALE (3–6mo) — schedule review within 30 days.",
         f"  {fresh} FRESH (<3mo)  — no action required.", "",
     ]
@@ -875,7 +925,7 @@ def generate_bluf(files_dict, active_names, status_filter):
         f"  6-month : {(datetime.date.today()+datetime.timedelta(days=180)).isoformat()}",
         "",
         "=" * 64,
-        "ETHICAL USE: Data sourced from Shodan public index only.",
+        "ETHICAL USE: Data sourced from approved passive OSINT exports only.",
         "No camera streams accessed. Operator review required before action.",
         "=" * 64,
     ]
