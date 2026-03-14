@@ -57,13 +57,13 @@ This project now follows these default build rules:
 ## 3) Current Architecture Snapshot
 
 Existing core files in use:
-- `app (2).py` (primary Streamlit implementation in this workspace)
+- `app.py` (primary Streamlit implementation)
 - `modules/ingestion.py` (CSV loading + coordinate parsing orchestration)
 - `modules/coord_normalizer.py` (coordinate normalization utilities)
 - `sample_cameras.csv` (base demo dataset)
 
 Recommended near-term normalization:
-- standardize app entry filename to `app.py` in a future cleanup branch,
+- app entrypoint now standardized to `app.py`,
 - keep `modules/` as core analytics/transform layer,
 - keep docs in `/docs` and templates in `/docs/templates`.
 
@@ -118,7 +118,7 @@ Exit criteria:
 Tasks:
 1. Document run commands clearly.
 2. Add beginner setup checklist.
-3. Optionally rename `app (2).py` to `app.py` after verification.
+3. Keep `app.py` as the canonical app entrypoint.
 4. Confirm dependencies align with requirements and imports.
 
 Exit criteria:
@@ -159,7 +159,7 @@ For any new API use, include:
 ## 7) Deployment Notes
 
 Preferred path:
-1. Local dev (`streamlit run "app (2).py"`)
+1. Local dev (`streamlit run app.py`)
 2. Repo hardening + docs polish
 3. Streamlit Cloud for POC demo
 4. Optional containerization for team distribution

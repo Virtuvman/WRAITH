@@ -24,7 +24,7 @@ WRAITH is a local-first Streamlit application for ingesting camera OSINT dataset
 
 ```text
 .
-├── app (2).py                       # Current Streamlit entrypoint
+├── app.py                           # Streamlit entrypoint
 ├── modules/
 │   ├── ingestion.py                 # CSV ingestion + parsing flow
 │   └── coord_normalizer.py          # Coordinate normalization
@@ -58,13 +58,13 @@ pip install -r requirements.txt
 ### 3) Run WRAITH
 
 ```cmd
-streamlit run "app (2).py"
+streamlit run app.py
 ```
 
 If port `8501` is busy:
 
 ```cmd
-streamlit run "app (2).py" --server.port 8502
+streamlit run app.py --server.port 8502
 ```
 
 ---

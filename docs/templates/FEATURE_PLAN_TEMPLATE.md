@@ -40,7 +40,7 @@ As a `<user type>`, I want to `<action>` so that `<outcome>`.
 
 ## 6) Files Expected to Change
 
-- `app.py` / `app (2).py`
+- `app.py`
 - `modules/...`
 - `docs/...`
 

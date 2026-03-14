@@ -9,7 +9,7 @@ Use these scenarios to validate core behavior before demos or GitHub push.
 **Objective:** confirm normal ingest + map render works.
 
 Steps:
-1. Run app: `streamlit run "app (2).py"`
+1. Run app: `streamlit run app.py`
 2. Upload `sample_cameras.csv`
 3. Open Globe, Flat Map, Data Table panels.
 
