@@ -28,6 +28,7 @@ import os
 import base64
 from pathlib import Path
 import datetime
+import time
 import smtplib
 import logging
 from email.mime.text import MIMEText
@@ -304,6 +305,60 @@ def init_session():
         st.session_state.email_sent = False
     if "admin_metrics_ok" not in st.session_state:
         st.session_state.admin_metrics_ok = False
+
+
+def require_pilot_access() -> None:
+    """Front-door password gate for hosted pilot access."""
+    access_enabled = _env_bool("PILOT_ACCESS_ENABLED", True)
+    if not access_enabled:
+        return
+
+    expected = st.secrets.get("PILOT_ACCESS_PASSWORD", os.getenv("PILOT_ACCESS_PASSWORD", "")).strip()
+    if not expected:
+        st.error("Pilot access is enabled but no password is configured.")
+        st.caption("Set `PILOT_ACCESS_PASSWORD` in Streamlit secrets or environment variables.")
+        st.stop()
+
+    if "pilot_authed" not in st.session_state:
+        st.session_state.pilot_authed = False
+    if "pilot_failed_attempts" not in st.session_state:
+        st.session_state.pilot_failed_attempts = 0
+    if "pilot_lock_until" not in st.session_state:
+        st.session_state.pilot_lock_until = 0.0
+
+    if st.session_state.pilot_authed:
+        return
+
+    now_ts = time.time()
+    lock_until = float(st.session_state.pilot_lock_until)
+    if now_ts < lock_until:
+        wait_seconds = max(1, int(lock_until - now_ts))
+        st.title("WRAITH Pilot Access")
+        st.warning(f"Too many failed attempts. Try again in {wait_seconds}s.")
+        st.stop()
+
+    st.title("WRAITH Pilot Access")
+    st.caption("Enter pilot password to access WRAITH.")
+    candidate = st.text_input("Pilot password", type="password", key="pilot_password_input")
+
+    if st.button("Enter", use_container_width=True):
+        if candidate == expected:
+            st.session_state.pilot_authed = True
+            st.session_state.pilot_failed_attempts = 0
+            st.session_state.pilot_lock_until = 0.0
+            st.rerun()
+        else:
+            st.session_state.pilot_failed_attempts += 1
+            attempts = int(st.session_state.pilot_failed_attempts)
+            if attempts >= 3:
+                cooldown_seconds = int(os.getenv("PILOT_LOCKOUT_SECONDS", "15"))
+                st.session_state.pilot_lock_until = time.time() + max(5, cooldown_seconds)
+                st.session_state.pilot_failed_attempts = 0
+                st.error("Invalid password. Temporary lockout enabled.")
+            else:
+                st.error(f"Invalid password ({attempts}/3).")
+
+    st.stop()
 
 
 def next_color():
@@ -1328,6 +1383,14 @@ def render_sidebar(files_dict):
         unsafe_allow_html=True,
     )
 
+    if st.session_state.get("pilot_authed", False):
+        if st.sidebar.button("Lock Session", use_container_width=True):
+            st.session_state.pilot_authed = False
+            st.session_state.admin_metrics_ok = False
+            st.session_state.files = {}
+            st.rerun()
+        st.sidebar.markdown("---")
+
     # ── Multi-file uploader ───────────────────────────────────────────────────
     uploaded_files = st.sidebar.file_uploader(
         "Upload region CSV(s)",
@@ -1499,6 +1562,7 @@ def render_sidebar(files_dict):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def main():
+    require_pilot_access()
     init_session()
     apply_splash_background()
 

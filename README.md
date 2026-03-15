@@ -195,6 +195,29 @@ ADMIN_METRICS_PASSPHRASE=WRAITH_TRIAL_2026!
 - In the sidebar, unlock via **Admin Access → Metrics passphrase**.
 - When unlocked, a `Metrics` panel appears in View navigation.
 
+### Pilot Front-Door App Protection (Recommended for hosted trials)
+
+WRAITH includes an optional full-app password gate for pilot deployments.
+
+- Streamlit Cloud → **App Settings → Secrets**:
+
+```toml
+PILOT_ACCESS_PASSWORD = "WRAITH_TRIAL_2026!"
+PILOT_ACCESS_ENABLED = true
+PILOT_LOCKOUT_SECONDS = 15
+```
+
+- Behavior:
+  - Users must pass front-door password before any app UI loads.
+  - After 3 failed attempts, a short cooldown lockout applies.
+  - `Lock Session` button in sidebar clears access for current session.
+
+You can disable the gate for local/offline debugging with:
+
+```env
+PILOT_ACCESS_ENABLED=false
+```
+
 ### Logo / Branding
 
 - Place logo assets in project root:
