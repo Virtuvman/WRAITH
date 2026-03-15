@@ -101,6 +101,15 @@ Outputs:
 - `data/poc_global_500_v5.csv`
 - optional `.xlsx` files if Excel engine is available
 
+Trial profiles (for more varied pilot behavior):
+- `poc_global_500.csv` / `GLOBAL_500_V1`: `baseline`
+- `poc_global_500_v2.csv` / `GLOBAL_500_V2`: `expired_heavy`
+- `poc_global_500_v3.csv` / `GLOBAL_500_V3`: `fresh_asia_focus`
+- `poc_global_500_v4.csv` / `GLOBAL_500_V4`: `americas_hotspot`
+- `poc_global_500_v5.csv` / `GLOBAL_500_V5`: `review_stale_global_mix`
+
+Each row includes a `trial_profile` column for quick filtering/validation.
+
 ### Option C — External source ingest
 
 External API-based ingestion is currently disabled by default.

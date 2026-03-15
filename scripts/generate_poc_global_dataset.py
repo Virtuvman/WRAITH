@@ -19,7 +19,47 @@ from pathlib import Path
 import random
 
 
-def _build_rows(seed: int, poc_batch: str, size: int = 500) -> list[dict[str, object]]:
+def _weighted_choice(rng: random.Random, items: list[str], weights: list[float]) -> str:
+    total = sum(weights)
+    if total <= 0:
+        return rng.choice(items)
+    pick = rng.uniform(0, total)
+    acc = 0.0
+    for item, w in zip(items, weights):
+        acc += w
+        if pick <= acc:
+            return item
+    return items[-1]
+
+
+def _sample_days_ago(rng: random.Random, staleness_mix: dict[str, float]) -> int:
+    """Return days_ago across CURRENT / REVIEW / STALE / EXPIRED ranges."""
+    statuses = ["CURRENT", "REVIEW", "STALE", "EXPIRED"]
+    weights = [float(staleness_mix.get(s, 0.0)) for s in statuses]
+    status = _weighted_choice(rng, statuses, weights)
+
+    if status == "CURRENT":
+        return rng.randint(3, 80)
+    if status == "REVIEW":
+        return rng.randint(95, 170)
+    if status == "STALE":
+        return rng.randint(190, 345)
+    return rng.randint(370, 540)  # EXPIRED (>360d)
+
+
+def _biased_choice(rng: random.Random, base: list[str], preferred: list[str], preferred_weight: float) -> str:
+    if preferred and rng.random() < preferred_weight:
+        return rng.choice(preferred)
+    return rng.choice(base)
+
+
+def _build_rows(
+    seed: int,
+    poc_batch: str,
+    profile_name: str,
+    profile: dict[str, object],
+    size: int = 500,
+) -> list[dict[str, object]]:
     rng = random.Random(seed)
 
     world_points = [
@@ -61,6 +101,10 @@ def _build_rows(seed: int, poc_batch: str, size: int = 500) -> list[dict[str, ob
         ("Perth", "AU", -31.9505, 115.8605, "Oceania"),
     ]
 
+    points_by_region: dict[str, list[tuple[str, str, float, float, str]]] = {}
+    for p in world_points:
+        points_by_region.setdefault(p[4], []).append(p)
+
     device_types = ["IP Camera", "PTZ Camera", "Dome Camera", "Bullet Camera"]
     models = [
         "Hikvision DS-2CD2085G1",
@@ -73,21 +117,45 @@ def _build_rows(seed: int, poc_batch: str, size: int = 500) -> list[dict[str, ob
     orgs = ["Comcast", "Verizon", "AT&T", "Lumen", "DigitalOcean", "Cloudflare", "Airtel", "BT"]
     ports = [80, 443, 554, 8080]
 
+    region_order = sorted(points_by_region.keys())
+    region_weights_cfg = profile.get("region_weights")
+    region_weights: dict[str, float] = (
+        region_weights_cfg if isinstance(region_weights_cfg, dict) else {r: 1.0 for r in region_order}
+    )
+
+    staleness_mix_cfg = profile.get("staleness_mix")
+    staleness_mix: dict[str, float] = (
+        staleness_mix_cfg
+        if isinstance(staleness_mix_cfg, dict)
+        else {"CURRENT": 40, "REVIEW": 30, "STALE": 20, "EXPIRED": 10}
+    )
+
+    jitter_scale = float(profile.get("jitter_scale", 0.45))
+
+    preferred_models = [str(x) for x in profile.get("preferred_models", [])] if isinstance(profile.get("preferred_models"), list) else []
+    preferred_orgs = [str(x) for x in profile.get("preferred_orgs", [])] if isinstance(profile.get("preferred_orgs"), list) else []
+    preferred_ports = [int(x) for x in profile.get("preferred_ports", [])] if isinstance(profile.get("preferred_ports"), list) else []
+
+    preferred_weight = float(profile.get("preferred_weight", 0.65))
+
     today = date.today()
     rows: list[dict[str, object]] = []
 
     for i in range(size):
-        city, country, base_lat, base_lon, region = world_points[i % len(world_points)]
-        lat = max(-89.9, min(89.9, base_lat + rng.uniform(-0.45, 0.45)))
-        lon = max(-179.9, min(179.9, base_lon + rng.uniform(-0.45, 0.45)))
-
-        # Mix of fresh / stale / expired dates for PoC staleness views.
-        if i % 10 < 4:
-            days_ago = rng.randint(3, 80)      # fresh
-        elif i % 10 < 7:
-            days_ago = rng.randint(95, 170)    # stale
+        if profile_name == "baseline":
+            city, country, base_lat, base_lon, region = world_points[i % len(world_points)]
         else:
-            days_ago = rng.randint(190, 360)   # expired
+            selected_region = _weighted_choice(
+                rng,
+                region_order,
+                [float(region_weights.get(r, 1.0)) for r in region_order],
+            )
+            city, country, base_lat, base_lon, region = rng.choice(points_by_region[selected_region])
+
+        lat = max(-89.9, min(89.9, base_lat + rng.uniform(-jitter_scale, jitter_scale)))
+        lon = max(-179.9, min(179.9, base_lon + rng.uniform(-jitter_scale, jitter_scale)))
+
+        days_ago = _sample_days_ago(rng, staleness_mix)
 
         last_seen = (today - timedelta(days=days_ago)).isoformat()
 
@@ -97,14 +165,15 @@ def _build_rows(seed: int, poc_batch: str, size: int = 500) -> list[dict[str, ob
                 "latitude": round(lat, 6),
                 "longitude": round(lon, 6),
                 "device_type": rng.choice(device_types),
-                "model": rng.choice(models),
+                "model": _biased_choice(rng, models, preferred_models, preferred_weight),
                 "location_label": f"{city} Sector {i % 20 + 1}",
                 "last_seen": last_seen,
-                "port": rng.choice(ports),
-                "org": rng.choice(orgs),
+                "port": _biased_choice(rng, [str(p) for p in ports], [str(p) for p in preferred_ports], preferred_weight),
+                "org": _biased_choice(rng, orgs, preferred_orgs, preferred_weight),
                 "country": country,
                 "region": region,
                 "poc_batch": poc_batch,
+                "trial_profile": profile_name,
             }
         )
 
@@ -140,17 +209,104 @@ def _write_optional_xlsx(rows: list[dict[str, object]], out_path: Path) -> None:
 
 def main() -> None:
     dataset_specs = [
-        ("GLOBAL_500_V1", 42),
-        ("GLOBAL_500_V2", 84),
-        ("GLOBAL_500_V3", 126),
-        ("GLOBAL_500_V4", 168),
-        ("GLOBAL_500_V5", 210),
+        (
+            "GLOBAL_500_V1",
+            42,
+            "baseline",
+            {
+                "staleness_mix": {"CURRENT": 40, "REVIEW": 30, "STALE": 20, "EXPIRED": 10},
+                "jitter_scale": 0.45,
+            },
+        ),
+        (
+            "GLOBAL_500_V2",
+            84,
+            "expired_heavy",
+            {
+                "staleness_mix": {"CURRENT": 15, "REVIEW": 20, "STALE": 30, "EXPIRED": 35},
+                "region_weights": {
+                    "North America": 1.0,
+                    "South America": 1.0,
+                    "Europe": 1.0,
+                    "Africa": 1.3,
+                    "Middle East": 1.5,
+                    "Asia": 1.2,
+                    "Oceania": 0.8,
+                },
+                "preferred_orgs": ["Lumen", "Cloudflare"],
+                "preferred_weight": 0.7,
+                "jitter_scale": 0.35,
+            },
+        ),
+        (
+            "GLOBAL_500_V3",
+            126,
+            "fresh_asia_focus",
+            {
+                "staleness_mix": {"CURRENT": 65, "REVIEW": 20, "STALE": 10, "EXPIRED": 5},
+                "region_weights": {
+                    "North America": 0.8,
+                    "South America": 0.8,
+                    "Europe": 1.0,
+                    "Africa": 0.7,
+                    "Middle East": 1.0,
+                    "Asia": 2.2,
+                    "Oceania": 1.3,
+                },
+                "preferred_models": ["Axis P5655-E", "Hanwha XNV-8080R"],
+                "preferred_ports": [443, 8080],
+                "preferred_weight": 0.72,
+                "jitter_scale": 0.55,
+            },
+        ),
+        (
+            "GLOBAL_500_V4",
+            168,
+            "americas_hotspot",
+            {
+                "staleness_mix": {"CURRENT": 30, "REVIEW": 30, "STALE": 25, "EXPIRED": 15},
+                "region_weights": {
+                    "North America": 2.1,
+                    "South America": 1.8,
+                    "Europe": 0.7,
+                    "Africa": 0.5,
+                    "Middle East": 0.5,
+                    "Asia": 0.8,
+                    "Oceania": 0.6,
+                },
+                "preferred_models": ["Hikvision DS-2CD2085G1", "Dahua SD49425XB"],
+                "preferred_orgs": ["Comcast", "Verizon", "AT&T"],
+                "preferred_weight": 0.75,
+                "jitter_scale": 0.25,
+            },
+        ),
+        (
+            "GLOBAL_500_V5",
+            210,
+            "review_stale_global_mix",
+            {
+                "staleness_mix": {"CURRENT": 20, "REVIEW": 40, "STALE": 30, "EXPIRED": 10},
+                "region_weights": {
+                    "North America": 1.0,
+                    "South America": 1.0,
+                    "Europe": 1.4,
+                    "Africa": 1.2,
+                    "Middle East": 1.3,
+                    "Asia": 1.2,
+                    "Oceania": 0.8,
+                },
+                "preferred_ports": [554, 8080],
+                "preferred_orgs": ["DigitalOcean", "BT", "Airtel"],
+                "preferred_weight": 0.68,
+                "jitter_scale": 0.4,
+            },
+        ),
     ]
 
     generated_csv_paths: list[Path] = []
 
-    for batch, seed in dataset_specs:
-        rows = _build_rows(seed=seed, poc_batch=batch, size=500)
+    for batch, seed, profile_name, profile in dataset_specs:
+        rows = _build_rows(seed=seed, poc_batch=batch, profile_name=profile_name, profile=profile, size=500)
 
         # Preserve original legacy output names for V1 in both root and data/
         if batch == "GLOBAL_500_V1":

@@ -92,11 +92,10 @@ HEATMAP_TILES = {
     "Dark (CartoDB)": {"tiles": "CartoDB dark_matter", "attr": "CartoDB"},
     "Light (CartoDB)": {"tiles": "CartoDB positron", "attr": "CartoDB"},
     "Street (OpenStreetMap)": {"tiles": "OpenStreetMap", "attr": "OpenStreetMap"},
-    # Use explicit URL for terrain tiles to avoid streamlit-folium trying to
-    # resolve "Stamen Terrain" as a local component asset path.
+    # Use explicit non-auth terrain tiles to avoid hosted 401 errors.
     "Terrain": {
-        "tiles": "https://tiles.stadiamaps.com/tiles/stamen_terrain/{z}/{x}/{y}.png",
-        "attr": "Map tiles by Stadia Maps, Stamen Design, OpenMapTiles, OpenStreetMap contributors",
+        "tiles": "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+        "attr": "Map data: © OpenStreetMap contributors, SRTM | Map style: © OpenTopoMap",
     },
     "Satellite": {
         "tiles": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
@@ -151,6 +150,12 @@ def apply_splash_background() -> None:
 
     splash_uri = _splash_data_uri(SPLASH_BACKGROUND_PATH)
     if not splash_uri:
+        if not st.session_state.get("splash_warning_shown", False):
+            st.warning(
+                f"Splash is enabled but image was not found: `{SPLASH_BACKGROUND_PATH}`. "
+                "Using standard background."
+            )
+            st.session_state.splash_warning_shown = True
         return
 
     st.markdown(
@@ -1562,9 +1567,9 @@ def render_sidebar(files_dict):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def main():
-    require_pilot_access()
     init_session()
     apply_splash_background()
+    require_pilot_access()
 
     # ── Header ────────────────────────────────────────────────────────────────
     if LOGO_SVG_PATH.exists():
