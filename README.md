@@ -81,6 +81,10 @@ streamlit run app.py --server.port 8502
 - `sample_cameras_decimal.csv`
 - `sample_cameras_combined.csv`
 - `data/poc_global_500.csv`
+- `data/poc_global_500_v2.csv`
+- `data/poc_global_500_v3.csv`
+- `data/poc_global_500_v4.csv`
+- `data/poc_global_500_v5.csv`
 
 ### Option B — Generate PoC global dataset
 
@@ -91,6 +95,10 @@ python scripts\generate_poc_global_dataset.py
 Outputs:
 - `data/poc_global_500.csv`
 - `poc_global_500.csv`
+- `data/poc_global_500_v2.csv`
+- `data/poc_global_500_v3.csv`
+- `data/poc_global_500_v4.csv`
+- `data/poc_global_500_v5.csv`
 - optional `.xlsx` files if Excel engine is available
 
 ### Option C — External source ingest
@@ -162,6 +170,8 @@ Then open a PR to `main`.
 - `docs/MASTER_PROMPT.md` — implementation contract / operating style
 - `docs/TEST_SCENARIOS.md` — repeatable validation scenarios
 - `docs/SESSION_UPDATE_2026-03-14.md` — latest session summary
+- `docs/PILOT_ONBOARDING.md` — trial onboarding for non-GitHub peers
+- `docs/PILOT_FEEDBACK_TEMPLATE.md` — structured pilot feedback intake template
 - `docs/templates/` — reusable templates for features, API integrations, QC
 
 ---
@@ -179,7 +189,7 @@ Then open a PR to `main`.
 - Configure passphrase in `.env`:
 
 ```env
-ADMIN_METRICS_PASSPHRASE=wraith
+ADMIN_METRICS_PASSPHRASE=WRAITH_TRIAL_2026!
 ```
 
 - In the sidebar, unlock via **Admin Access → Metrics passphrase**.

@@ -1,8 +1,12 @@
-"""Generate a 500-point global PoC camera dataset for WRAITH.
+"""Generate global PoC camera datasets for WRAITH trials.
 
 Outputs:
   - data/poc_global_500.csv
   - poc_global_500.csv
+  - data/poc_global_500_v2.csv
+  - data/poc_global_500_v3.csv
+  - data/poc_global_500_v4.csv
+  - data/poc_global_500_v5.csv
   - data/poc_global_500.xlsx (if Excel engine available)
   - poc_global_500.xlsx (if Excel engine available)
 """
@@ -15,8 +19,8 @@ from pathlib import Path
 import random
 
 
-def main() -> None:
-    random.seed(42)
+def _build_rows(seed: int, poc_batch: str, size: int = 500) -> list[dict[str, object]]:
+    rng = random.Random(seed)
 
     world_points = [
         ("Washington", "US", 38.9072, -77.0369, "North America"),
@@ -72,18 +76,18 @@ def main() -> None:
     today = date.today()
     rows: list[dict[str, object]] = []
 
-    for i in range(500):
+    for i in range(size):
         city, country, base_lat, base_lon, region = world_points[i % len(world_points)]
-        lat = max(-89.9, min(89.9, base_lat + random.uniform(-0.45, 0.45)))
-        lon = max(-179.9, min(179.9, base_lon + random.uniform(-0.45, 0.45)))
+        lat = max(-89.9, min(89.9, base_lat + rng.uniform(-0.45, 0.45)))
+        lon = max(-179.9, min(179.9, base_lon + rng.uniform(-0.45, 0.45)))
 
         # Mix of fresh / stale / expired dates for PoC staleness views.
         if i % 10 < 4:
-            days_ago = random.randint(3, 80)      # fresh
+            days_ago = rng.randint(3, 80)      # fresh
         elif i % 10 < 7:
-            days_ago = random.randint(95, 170)    # stale
+            days_ago = rng.randint(95, 170)    # stale
         else:
-            days_ago = random.randint(190, 360)   # expired
+            days_ago = rng.randint(190, 360)   # expired
 
         last_seen = (today - timedelta(days=days_ago)).isoformat()
 
@@ -92,48 +96,79 @@ def main() -> None:
                 "ip": f"10.{(i // 256) % 256}.{(i // 16) % 256}.{(i % 254) + 1}",
                 "latitude": round(lat, 6),
                 "longitude": round(lon, 6),
-                "device_type": random.choice(device_types),
-                "model": random.choice(models),
+                "device_type": rng.choice(device_types),
+                "model": rng.choice(models),
                 "location_label": f"{city} Sector {i % 20 + 1}",
                 "last_seen": last_seen,
-                "port": random.choice(ports),
-                "org": random.choice(orgs),
+                "port": rng.choice(ports),
+                "org": rng.choice(orgs),
                 "country": country,
                 "region": region,
-                "poc_batch": "GLOBAL_500_V1",
+                "poc_batch": poc_batch,
             }
         )
 
-    out_paths = [Path("data/poc_global_500.csv"), Path("poc_global_500.csv")]
-    for p in out_paths:
-        p.parent.mkdir(parents=True, exist_ok=True)
-        with p.open("w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
-            writer.writeheader()
-            writer.writerows(rows)
+    return rows
 
-    # Optional Excel outputs.
-    for p in [Path("data/poc_global_500.xlsx"), Path("poc_global_500.xlsx")]:
-        try:
-            # Keep Excel generation optional and dependency-light.
-            from openpyxl import Workbook  # type: ignore[import-untyped]
 
-            wb = Workbook()
-            ws = wb.active
+def _write_csv(rows: list[dict[str, object]], out_path: Path) -> None:
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
 
-            headers = list(rows[0].keys())
-            ws.append(headers)
-            for row in rows:
-                ws.append([row[h] for h in headers])
 
-            wb.save(p)
-        except Exception:
-            # If no Excel writer installed, CSV outputs are still generated.
-            pass
+def _write_optional_xlsx(rows: list[dict[str, object]], out_path: Path) -> None:
+    try:
+        # Keep Excel generation optional and dependency-light.
+        from openpyxl import Workbook  # type: ignore[import-untyped]
 
-    print("Generated 500-point PoC dataset:")
-    print(" - data/poc_global_500.csv")
-    print(" - poc_global_500.csv")
+        wb = Workbook()
+        ws = wb.active
+
+        headers = list(rows[0].keys())
+        ws.append(headers)
+        for row in rows:
+            ws.append([row[h] for h in headers])
+
+        wb.save(out_path)
+    except Exception:
+        # If no Excel writer installed, CSV outputs are still generated.
+        pass
+
+
+def main() -> None:
+    dataset_specs = [
+        ("GLOBAL_500_V1", 42),
+        ("GLOBAL_500_V2", 84),
+        ("GLOBAL_500_V3", 126),
+        ("GLOBAL_500_V4", 168),
+        ("GLOBAL_500_V5", 210),
+    ]
+
+    generated_csv_paths: list[Path] = []
+
+    for batch, seed in dataset_specs:
+        rows = _build_rows(seed=seed, poc_batch=batch, size=500)
+
+        # Preserve original legacy output names for V1 in both root and data/
+        if batch == "GLOBAL_500_V1":
+            for p in [Path("data/poc_global_500.csv"), Path("poc_global_500.csv")]:
+                _write_csv(rows, p)
+                generated_csv_paths.append(p)
+
+            for p in [Path("data/poc_global_500.xlsx"), Path("poc_global_500.xlsx")]:
+                _write_optional_xlsx(rows, p)
+        else:
+            suffix = batch.split("_")[-1].lower()  # v2, v3, ...
+            csv_path = Path(f"data/poc_global_500_{suffix}.csv")
+            _write_csv(rows, csv_path)
+            generated_csv_paths.append(csv_path)
+
+    print("Generated 500-point PoC datasets:")
+    for p in generated_csv_paths:
+        print(f" - {p.as_posix()}")
     print(" - data/poc_global_500.xlsx (if supported)")
     print(" - poc_global_500.xlsx (if supported)")
 
