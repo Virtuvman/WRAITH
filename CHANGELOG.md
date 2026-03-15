@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.2.0] - 2026-03-15
+
+### Added
+- New modular staleness engine: `modules/staleness.py`.
+- Four-tier staleness model:
+  - `CURRENT` (<90d)
+  - `REVIEW` (90–180d)
+  - `STALE` (180–360d)
+  - `EXPIRED` (>360d)
+- Collection Schedule panel in **Alerts & Export** grouped by `poc_batch`.
+- Collection schedule CSV export.
+- Branding assets tracked for app identity (`wraith_logo.svg`, `WRAITH Logo.png`).
+
+### Changed
+- `app.py` now consumes `modules/staleness.py` for status parsing/classification and color mapping.
+- KPI semantics updated:
+  - **Regions** now counts unique geographic `region` values.
+  - **Layers** explicitly reports active file/layer count.
+- BLUF and in-app alert language aligned to 90/180/360-day lifecycle.
+- Sidebar staleness filters updated to the 4-tier model.
+- Data table status styling updated to the new status set.
+- `modules/ingestion.py` now explicitly normalizes/preserves `region` and `poc_batch` fields.
+- README expanded with MVP behavior, QA commands, push workflow, and colleague sharing guidance.
+
 ## [0.1.0] - 2026-03-14
 
 ### Added

@@ -25,6 +25,7 @@ REQUIRES:
 """
 
 import os
+import base64
 from pathlib import Path
 import datetime
 import smtplib
@@ -51,9 +52,23 @@ except ImportError:
 
 from modules.ingestion import load_csv
 from modules.coord_normalizer import describe_detection
+from modules.staleness import (
+    STALENESS_ORDER,
+    STALENESS_RING,
+    STATUS_COLORS,
+    apply_staleness,
+    parse_last_seen_date,
+)
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on", "y"}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONSTANTS
@@ -72,23 +87,90 @@ FILE_COLORS = [
     "#c084fc",  # purple-light
 ]
 
-# Ring color + width encodes staleness on every dot, regardless of file color
-STALENESS_RING = {
-    "FRESH":   {"color": "#22c55e", "width": 1.0, "opacity": 0.92},
-    "STALE":   {"color": "#eab308", "width": 2.2, "opacity": 0.80},
-    "EXPIRED": {"color": "#ef4444", "width": 3.5, "opacity": 0.65},
-}
-
 HEATMAP_TILES = {
     "Dark (CartoDB)": {"tiles": "CartoDB dark_matter", "attr": "CartoDB"},
     "Light (CartoDB)": {"tiles": "CartoDB positron", "attr": "CartoDB"},
     "Street (OpenStreetMap)": {"tiles": "OpenStreetMap", "attr": "OpenStreetMap"},
-    "Terrain": {"tiles": "Stamen Terrain", "attr": "Stamen"},
+    # Use explicit URL for terrain tiles to avoid streamlit-folium trying to
+    # resolve "Stamen Terrain" as a local component asset path.
+    "Terrain": {
+        "tiles": "https://tiles.stadiamaps.com/tiles/stamen_terrain/{z}/{x}/{y}.png",
+        "attr": "Map tiles by Stadia Maps, Stamen Design, OpenMapTiles, OpenStreetMap contributors",
+    },
     "Satellite": {
         "tiles": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
         "attr": "Tiles © Esri",
     },
 }
+
+# Optional branding assets (if present in project root)
+LOGO_SVG_PATH = Path("wraith_logo.svg")
+LOGO_PNG_PATH = Path("wraith_logo.png")
+
+PAGE_ICON = "👻"
+if LOGO_PNG_PATH.exists():
+    PAGE_ICON = str(LOGO_PNG_PATH)
+elif LOGO_SVG_PATH.exists():
+    # SVG may work depending on Streamlit/browser behavior.
+    PAGE_ICON = str(LOGO_SVG_PATH)
+
+SPLASH_ENABLED = _env_bool("ENABLE_SPLASH", False)
+SPLASH_BACKGROUND_PATH = Path(os.getenv("SPLASH_BACKGROUND_PATH", "assets/wraith_splash.png"))
+try:
+    SPLASH_OVERLAY_ALPHA = float(os.getenv("SPLASH_OVERLAY_ALPHA", "0.58"))
+except ValueError:
+    SPLASH_OVERLAY_ALPHA = 0.58
+SPLASH_OVERLAY_ALPHA = min(0.9, max(0.0, SPLASH_OVERLAY_ALPHA))
+
+
+def _splash_data_uri(path: Path) -> str | None:
+    if not path.exists() or not path.is_file():
+        return None
+
+    mime_by_ext = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+        ".svg": "image/svg+xml",
+    }
+    mime = mime_by_ext.get(path.suffix.lower(), "application/octet-stream")
+
+    try:
+        encoded = base64.b64encode(path.read_bytes()).decode("utf-8")
+        return f"data:{mime};base64,{encoded}"
+    except Exception:
+        return None
+
+
+def apply_splash_background() -> None:
+    """Apply optional full-page splash background image with readability overlay."""
+    if not SPLASH_ENABLED:
+        return
+
+    splash_uri = _splash_data_uri(SPLASH_BACKGROUND_PATH)
+    if not splash_uri:
+        return
+
+    st.markdown(
+        f"""
+<style>
+.stApp {{
+    background:
+      linear-gradient(rgba(7, 12, 24, {SPLASH_OVERLAY_ALPHA}), rgba(7, 12, 24, {SPLASH_OVERLAY_ALPHA})),
+      url('{splash_uri}');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+}}
+[data-testid="stHeader"] {{
+    background: rgba(0, 0, 0, 0);
+}}
+</style>
+""",
+        unsafe_allow_html=True,
+    )
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PAGE CONFIG
@@ -96,7 +178,7 @@ HEATMAP_TILES = {
 
 st.set_page_config(
     page_title="WRAITH",
-    page_icon="👻",
+    page_icon=PAGE_ICON,
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -143,6 +225,7 @@ html, body, [class*="css"] { font-family:'Inter',sans-serif; }
 .kpi-card.total  .kpi-num { color:#94a3b8; }
 .kpi-card.green  .kpi-num { color:#22c55e; }
 .kpi-card.yellow .kpi-num { color:#eab308; }
+.kpi-card.orange .kpi-num { color:#f97316; }
 .kpi-card.red    .kpi-num { color:#ef4444; }
 
 .file-table { width:100%; border-collapse:collapse; font-size:0.78rem; margin-top:0.4rem; }
@@ -219,6 +302,8 @@ def init_session():
         st.session_state.files = {}
     if "email_sent" not in st.session_state:
         st.session_state.email_sent = False
+    if "admin_metrics_ok" not in st.session_state:
+        st.session_state.admin_metrics_ok = False
 
 
 def next_color():
@@ -226,82 +311,9 @@ def next_color():
     return FILE_COLORS[len(st.session_state.files) % len(FILE_COLORS)]
 
 
-def _parse_last_seen_date(value) -> datetime.date | None:
-    """Parse common date formats (including Excel serial dates) safely."""
-    if value is None:
-        return None
-
-    s = str(value).strip()
-    if not s:
-        return None
-
-    # Fast path for ISO-like values (YYYY-MM-DD or ISO datetime variants).
-    try:
-        return datetime.date.fromisoformat(s[:10])
-    except Exception:
-        pass
-
-    # Try full ISO datetime strings (including trailing Z).
-    try:
-        return datetime.datetime.fromisoformat(s.replace("Z", "+00:00")).date()
-    except Exception:
-        pass
-
-    # Common non-ISO exports.
-    for fmt in (
-        "%m/%d/%Y",
-        "%m-%d-%Y",
-        "%d/%m/%Y",
-        "%d-%m-%Y",
-        "%Y/%m/%d",
-        "%Y.%m.%d",
-        "%b %d %Y",
-        "%d %b %Y",
-    ):
-        try:
-            return datetime.datetime.strptime(s, fmt).date()
-        except Exception:
-            continue
-
-    # Excel serial date fallback (days since 1899-12-30).
-    try:
-        serial = float(s)
-        if 20000 <= serial <= 80000:
-            return (datetime.date(1899, 12, 30) + datetime.timedelta(days=int(serial)))
-    except Exception:
-        pass
-
-    return None
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# STALENESS ENGINE
-# ─────────────────────────────────────────────────────────────────────────────
-
 def compute_staleness(df):
-    today = datetime.date.today()
-    statuses, colors, classes, ages = [], [], [], []
-    for _, row in df.iterrows():
-        try:
-            last = _parse_last_seen_date(row.get("last_seen", ""))
-            if last is None:
-                raise ValueError("Unparseable last_seen")
-            months = (today - last).days / 30.44
-        except Exception:
-            months = 999
-        if months < 3:
-            statuses.append("FRESH");   colors.append("#22c55e"); classes.append("green")
-        elif months < 6:
-            statuses.append("STALE");   colors.append("#eab308"); classes.append("yellow")
-        else:
-            statuses.append("EXPIRED"); colors.append("#ef4444"); classes.append("red")
-        ages.append(round(months, 1))
-    df = df.copy()
-    df["staleness_status"] = statuses
-    df["color_hex"]        = colors
-    df["color_class"]      = classes
-    df["age_months"]       = ages
-    return df
+    """Compatibility wrapper; delegated to modules.staleness."""
+    return apply_staleness(df)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -351,7 +363,7 @@ def render_globe(files_dict, active_names, status_filter, auto_rotate=False):
         sub_file   = df_all[df_all["_source"] == fname]
 
         first_trace = True
-        for status in ["FRESH", "STALE", "EXPIRED"]:
+        for status in STALENESS_ORDER:
             sub = sub_file[sub_file["staleness_status"] == status]
             if sub.empty:
                 continue
@@ -390,7 +402,8 @@ def render_globe(files_dict, active_names, status_filter, auto_rotate=False):
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         legend=dict(
-            orientation="v", x=1.01, y=1, xanchor="left",
+            # Keep legend away from Plotly modebar controls (top-right).
+            orientation="v", x=1.01, y=0.82, xanchor="left",
             font=dict(size=10, color="#94a3b8"),
             bgcolor="rgba(15,23,42,0.75)",
             bordercolor="rgba(255,255,255,0.1)", borderwidth=1,
@@ -475,7 +488,7 @@ def render_flat_map(files_dict, active_names, status_filter):
         sub_file = df_all[df_all["_source"] == fname]
 
         first_trace = True
-        for status in ["FRESH", "STALE", "EXPIRED"]:
+        for status in STALENESS_ORDER:
             sub = sub_file[sub_file["staleness_status"] == status]
             if sub.empty:
                 continue
@@ -517,7 +530,8 @@ def render_flat_map(files_dict, active_names, status_filter):
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         legend=dict(
-            orientation="v", x=1.01, y=1, xanchor="left",
+            # Keep legend away from Plotly modebar controls (top-right).
+            orientation="v", x=1.01, y=0.82, xanchor="left",
             font=dict(size=10, color="#94a3b8"),
             bgcolor="rgba(15,23,42,0.75)",
             bordercolor="rgba(255,255,255,0.1)", borderwidth=1,
@@ -595,7 +609,7 @@ def render_heatmap(
     if show_minimap:
         MiniMap(toggle_display=True, position="bottomleft").add_to(m)
 
-    weight_map = {"EXPIRED": 3, "STALE": 2, "FRESH": 1}
+    weight_map = {"CURRENT": 1, "REVIEW": 2, "STALE": 3, "EXPIRED": 4}
 
     # Per-file FeatureGroup — each toggleable in the map's layer control
     for name in active_names:
@@ -690,8 +704,9 @@ def _render_file_legend(files_dict, active_names, show_ring_key=False):
         ring_key = (
             ' &nbsp;·&nbsp; <span style="font-size:0.71rem;color:#64748b">'
             'Ring = staleness: '
-            '<span style="color:#22c55e">●</span> Fresh &nbsp;'
-            '<span style="color:#eab308">●</span> Stale &nbsp;'
+            '<span style="color:#22c55e">●</span> Current &nbsp;'
+            '<span style="color:#eab308">●</span> Review &nbsp;'
+            '<span style="color:#f97316">●</span> Stale &nbsp;'
             '<span style="color:#ef4444">●</span> Expired</span>'
         )
     st.markdown(
@@ -705,36 +720,48 @@ def _render_file_legend(files_dict, active_names, show_ring_key=False):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def render_kpis(files_dict, active_names, status_filter):
-    total = fresh = stale = expired = 0
+    total = current = review = stale = expired = 0
     file_rows = []
+    region_values: set[str] = set()
 
     for name in active_names:
         if name not in files_dict:
             continue
         df = files_dict[name]["df"]
         df = df[df["staleness_status"].isin(status_filter)]
-        f  = int((df["color_class"] == "green").sum())
-        s  = int((df["color_class"] == "yellow").sum())
-        e  = int((df["color_class"] == "red").sum())
+        c  = int((df["staleness_status"] == "CURRENT").sum())
+        r  = int((df["staleness_status"] == "REVIEW").sum())
+        s  = int((df["staleness_status"] == "STALE").sum())
+        e  = int((df["staleness_status"] == "EXPIRED").sum())
         t  = len(df)
         total   += t
-        fresh   += f
+        current += c
+        review  += r
         stale   += s
         expired += e
-        file_rows.append((name, files_dict[name]["color"], t, f, s, e))
+        if "region" in df.columns:
+            region_values.update({str(v).strip() for v in df["region"].dropna().astype(str) if str(v).strip()})
+        file_rows.append((name, files_dict[name]["color"], t, c, r, s, e))
+
+    region_count = len(region_values)
+    layer_count = len(active_names)
 
     st.markdown(
         f'<div class="kpi-row">'
         f'<div class="kpi-card total"><div class="kpi-num">{total}</div>'
         f'<div class="kpi-lbl">Total Cameras</div></div>'
-        f'<div class="kpi-card green"><div class="kpi-num">{fresh}</div>'
-        f'<div class="kpi-lbl">Fresh &lt;3mo</div></div>'
-        f'<div class="kpi-card yellow"><div class="kpi-num">{stale}</div>'
-        f'<div class="kpi-lbl">Stale 3–6mo</div></div>'
+        f'<div class="kpi-card green"><div class="kpi-num">{current}</div>'
+        f'<div class="kpi-lbl">Current &lt;90d</div></div>'
+        f'<div class="kpi-card yellow"><div class="kpi-num">{review}</div>'
+        f'<div class="kpi-lbl">Review 90–180d</div></div>'
+        f'<div class="kpi-card orange"><div class="kpi-num">{stale}</div>'
+        f'<div class="kpi-lbl">Stale 180–360d</div></div>'
         f'<div class="kpi-card red"><div class="kpi-num">{expired}</div>'
-        f'<div class="kpi-lbl">Expired &gt;6mo</div></div>'
-        f'<div class="kpi-card total"><div class="kpi-num">{len(active_names)}</div>'
+        f'<div class="kpi-lbl">Expired &gt;360d</div></div>'
+        f'<div class="kpi-card total"><div class="kpi-num">{region_count}</div>'
         f'<div class="kpi-lbl">Regions</div></div>'
+        f'<div class="kpi-card total"><div class="kpi-num">{layer_count}</div>'
+        f'<div class="kpi-lbl">Layers</div></div>'
         f'</div>',
         unsafe_allow_html=True,
     )
@@ -747,21 +774,274 @@ def render_kpis(files_dict, active_names, status_filter):
                 f'<td><span class="ft-dot" style="background:{color}"></span>'
                 f'{name.replace(".csv","")}</td>'
                 f'<td style="text-align:center">{t}</td>'
-                f'<td style="text-align:center;color:#22c55e">{f}</td>'
-                f'<td style="text-align:center;color:#eab308">{s}</td>'
+                f'<td style="text-align:center;color:#22c55e">{c}</td>'
+                f'<td style="text-align:center;color:#eab308">{r}</td>'
+                f'<td style="text-align:center;color:#f97316">{s}</td>'
                 f'<td style="text-align:center;color:#ef4444">{e}</td>'
                 f'</tr>'
-                for name, color, t, f, s, e in file_rows
+                for name, color, t, c, r, s, e in file_rows
             )
             st.markdown(
                 f'<table class="file-table"><thead><tr>'
                 f'<th>Region / File</th><th>Total</th>'
-                f'<th>Fresh</th><th>Stale</th><th>Expired</th>'
+                f'<th>Current</th><th>Review</th><th>Stale</th><th>Expired</th>'
                 f'</tr></thead><tbody>{rows_html}</tbody></table>',
                 unsafe_allow_html=True,
             )
 
-    return total, fresh, stale, expired
+    return total, current, review, stale, expired, region_count, layer_count
+
+
+def _build_metrics_context(files_dict, filtered_dict, active_names, status_filter):
+    ingest_rows = 0
+    parsed_rows = 0
+    conflict_rows = 0
+    per_file_rows = []
+
+    for name, fd in files_dict.items():
+        df_raw = fd.get("df_raw")
+        df_clean = fd.get("df")
+        errors = fd.get("errors", [])
+        detection_info = fd.get("detection_info", {})
+
+        raw_count = len(df_raw) if df_raw is not None else len(df_clean)
+        parsed_count = len(df_clean) if df_clean is not None else 0
+        err_count = len(errors)
+
+        ingest_rows += raw_count
+        parsed_rows += parsed_count
+        conflict_rows += err_count
+
+        active_df = filtered_dict.get(name, {}).get("df")
+        if active_df is None:
+            active_count = 0
+            c = r = s = e = 0
+        else:
+            active_df = active_df[active_df["staleness_status"].isin(status_filter)]
+            active_count = len(active_df)
+            c = int((active_df["staleness_status"] == "CURRENT").sum())
+            r = int((active_df["staleness_status"] == "REVIEW").sum())
+            s = int((active_df["staleness_status"] == "STALE").sum())
+            e = int((active_df["staleness_status"] == "EXPIRED").sum())
+
+        per_file_rows.append(
+            {
+                "source_file": name,
+                "loaded_at": fd.get("loaded_at", ""),
+                "coord_format": describe_detection(detection_info),
+                "rows_ingested": raw_count,
+                "rows_parsed": parsed_count,
+                "conflicts": err_count,
+                "parse_success_pct": round((parsed_count / raw_count) * 100, 1) if raw_count else 0.0,
+                "active_rows": active_count,
+                "current": c,
+                "review": r,
+                "stale": s,
+                "expired": e,
+            }
+        )
+
+    parse_success_pct = round((parsed_rows / ingest_rows) * 100, 1) if ingest_rows else 0.0
+
+    active_frames = []
+    for name in active_names:
+        if name not in filtered_dict:
+            continue
+        df = filtered_dict[name]["df"].copy()
+        if df.empty:
+            continue
+        df = df[df["staleness_status"].isin(status_filter)]
+        if df.empty:
+            continue
+        df["source_file"] = name
+        active_frames.append(df)
+
+    df_active = pd.concat(active_frames, ignore_index=True) if active_frames else pd.DataFrame()
+
+    return {
+        "ingest_rows": ingest_rows,
+        "parsed_rows": parsed_rows,
+        "conflict_rows": conflict_rows,
+        "parse_success_pct": parse_success_pct,
+        "loaded_files": len(files_dict),
+        "active_files": len([n for n in active_names if n in filtered_dict]),
+        "per_file_df": pd.DataFrame(per_file_rows),
+        "df_active": df_active,
+    }
+
+
+def render_metrics_panel(files_dict, filtered_dict, active_names, status_filter):
+    st.markdown('<div class="section-label">Admin Metrics — Usage & Ingest Statistics</div>', unsafe_allow_html=True)
+
+    ctx = _build_metrics_context(files_dict, filtered_dict, active_names, status_filter)
+    df_active = ctx["df_active"]
+    per_file_df = ctx["per_file_df"]
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Loaded files", ctx["loaded_files"])
+    c2.metric("Active files", ctx["active_files"])
+    c3.metric("Rows ingested", f"{ctx['ingest_rows']:,}")
+    c4.metric("Rows parsed", f"{ctx['parsed_rows']:,}")
+    c5.metric("Parse success", f"{ctx['parse_success_pct']}%")
+
+    c6, c7, c8 = st.columns(3)
+    c6.metric("Conflict rows", f"{ctx['conflict_rows']:,}")
+    if not df_active.empty:
+        c7.metric("Active rows", f"{len(df_active):,}")
+        c8.metric("Expired %", f"{round((df_active['staleness_status'].eq('EXPIRED').mean()*100),1)}%")
+    else:
+        c7.metric("Active rows", "0")
+        c8.metric("Expired %", "0.0%")
+
+    st.markdown("---")
+
+    if df_active.empty:
+        st.info("No active rows match current filters for metrics charts.")
+    else:
+        # Status distribution
+        status_counts = (
+            df_active["staleness_status"]
+            .value_counts()
+            .reindex(STALENESS_ORDER, fill_value=0)
+            .reset_index()
+        )
+        status_counts.columns = ["status", "count"]
+
+        donut = go.Figure(
+            data=[
+                go.Pie(
+                    labels=status_counts["status"],
+                    values=status_counts["count"],
+                    hole=0.5,
+                    marker=dict(colors=[STATUS_COLORS[s] for s in STALENESS_ORDER]),
+                )
+            ]
+        )
+        donut.update_layout(height=360, margin=dict(l=0, r=0, t=20, b=0), title="Status distribution")
+
+        # Monthly trend
+        trend = df_active.copy()
+        trend["_dt"] = trend["last_seen"].apply(parse_last_seen_date)
+        trend = trend[trend["_dt"].notna()].copy()
+        trend["month"] = trend["_dt"].apply(lambda d: d.strftime("%Y-%m"))
+
+        if not trend.empty:
+            grp = trend.groupby(["month", "staleness_status"]).size().reset_index(name="count")
+            trend_fig = go.Figure()
+            for status in STALENESS_ORDER:
+                color = STATUS_COLORS[status]
+                sub = grp[grp["staleness_status"] == status]
+                trend_fig.add_trace(go.Bar(x=sub["month"], y=sub["count"], name=status, marker_color=color))
+            trend_fig.update_layout(
+                barmode="stack",
+                height=360,
+                margin=dict(l=0, r=0, t=20, b=0),
+                title="Monthly last_seen trend",
+                xaxis_title="Month",
+                yaxis_title="Records",
+            )
+        else:
+            trend_fig = None
+
+        left, right = st.columns(2)
+        with left:
+            st.plotly_chart(donut, use_container_width=True)
+        with right:
+            if trend_fig is not None:
+                st.plotly_chart(trend_fig, use_container_width=True)
+            else:
+                st.info("No parseable `last_seen` dates for monthly trend.")
+
+        # Top entities + age distribution
+        c_top1, c_top2 = st.columns(2)
+
+        top_countries = df_active["country"].fillna("UNKNOWN").value_counts().head(10)
+        fig_country = go.Figure(
+            data=[go.Bar(x=top_countries.values, y=top_countries.index, orientation="h", marker_color="#60a5fa")]
+        )
+        fig_country.update_layout(height=360, margin=dict(l=0, r=0, t=20, b=0), title="Top countries")
+
+        top_orgs = df_active["org"].fillna("UNKNOWN").value_counts().head(10)
+        fig_org = go.Figure(
+            data=[go.Bar(x=top_orgs.values, y=top_orgs.index, orientation="h", marker_color="#a78bfa")]
+        )
+        fig_org.update_layout(height=360, margin=dict(l=0, r=0, t=20, b=0), title="Top organizations")
+
+        with c_top1:
+            st.plotly_chart(fig_country, use_container_width=True)
+        with c_top2:
+            st.plotly_chart(fig_org, use_container_width=True)
+
+        c_top3, c_top4 = st.columns(2)
+
+        top_ports = df_active["port"].astype(str).fillna("UNKNOWN").value_counts().head(10)
+        fig_port = go.Figure(
+            data=[go.Bar(x=top_ports.index, y=top_ports.values, marker_color="#34d399")]
+        )
+        fig_port.update_layout(height=320, margin=dict(l=0, r=0, t=20, b=0), title="Top ports")
+
+        top_models = df_active["model"].fillna("UNKNOWN").value_counts().head(10)
+        fig_model = go.Figure(
+            data=[go.Bar(x=top_models.values, y=top_models.index, orientation="h", marker_color="#f472b6")]
+        )
+        fig_model.update_layout(height=320, margin=dict(l=0, r=0, t=20, b=0), title="Top models")
+
+        with c_top3:
+            st.plotly_chart(fig_port, use_container_width=True)
+        with c_top4:
+            st.plotly_chart(fig_model, use_container_width=True)
+
+        fig_age = go.Figure(
+            data=[go.Histogram(x=df_active["age_months"], nbinsx=20, marker_color="#facc15")]
+        )
+        fig_age.update_layout(height=300, margin=dict(l=0, r=0, t=20, b=0), title="Age distribution (months)")
+        st.plotly_chart(fig_age, use_container_width=True)
+
+    st.markdown("---")
+    st.markdown('<div class="section-label">Per-file ingest quality</div>', unsafe_allow_html=True)
+    st.dataframe(per_file_df, use_container_width=True, hide_index=True)
+
+    st.markdown('<div class="section-label">Metrics exports</div>', unsafe_allow_html=True)
+    summary_df = pd.DataFrame([
+        {
+            "generated_on": datetime.date.today().isoformat(),
+            "loaded_files": ctx["loaded_files"],
+            "active_files": ctx["active_files"],
+            "rows_ingested": ctx["ingest_rows"],
+            "rows_parsed": ctx["parsed_rows"],
+            "conflict_rows": ctx["conflict_rows"],
+            "parse_success_pct": ctx["parse_success_pct"],
+        }
+    ])
+
+    e1, e2, e3 = st.columns(3)
+    with e1:
+        st.download_button(
+            "⬇ Metrics summary CSV",
+            data=summary_df.to_csv(index=False).encode("utf-8"),
+            file_name=f"wraith_metrics_summary_{datetime.date.today().isoformat()}.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+    with e2:
+        st.download_button(
+            "⬇ Per-file ingest CSV",
+            data=per_file_df.to_csv(index=False).encode("utf-8"),
+            file_name=f"wraith_metrics_per_file_{datetime.date.today().isoformat()}.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+    with e3:
+        if df_active.empty:
+            st.button("No active metrics rows", disabled=True, use_container_width=True)
+        else:
+            st.download_button(
+                "⬇ Active metrics rows CSV",
+                data=df_active.to_csv(index=False).encode("utf-8"),
+                file_name=f"wraith_metrics_active_rows_{datetime.date.today().isoformat()}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -868,25 +1148,30 @@ def generate_bluf(files_dict, active_names, status_filter):
     df_all   = pd.concat(all_frames, ignore_index=True)
     df_all   = df_all[df_all["staleness_status"].isin(status_filter)]
     total    = len(df_all)
-    fresh    = int((df_all["color_class"] == "green").sum())
-    stale    = int((df_all["color_class"] == "yellow").sum())
-    expired  = int((df_all["color_class"] == "red").sum())
-    exp_locs = df_all[df_all["color_class"]=="red"]["location_label"].unique().tolist()
-    stl_locs = df_all[df_all["color_class"]=="yellow"]["location_label"].unique().tolist()
+    current  = int((df_all["staleness_status"] == "CURRENT").sum())
+    review   = int((df_all["staleness_status"] == "REVIEW").sum())
+    stale    = int((df_all["staleness_status"] == "STALE").sum())
+    expired  = int((df_all["staleness_status"] == "EXPIRED").sum())
+    exp_locs = df_all[df_all["staleness_status"] == "EXPIRED"]["location_label"].unique().tolist()
+    stl_locs = df_all[df_all["staleness_status"] == "STALE"]["location_label"].unique().tolist()
 
-    region_names = ", ".join(n.replace(".csv", "") for n in active_names)
+    region_values = []
+    if "region" in df_all.columns:
+        region_values = sorted({str(v).strip() for v in df_all["region"].dropna().astype(str) if str(v).strip()})
+    region_names = ", ".join(region_values) if region_values else "N/A"
 
     lines = [
         "=" * 64,
         "WRAITH — CAMERA INTELLIGENCE STALENESS REPORT",
         f"Generated : {today}",
-        f"Regions   : {len(active_names)} — {region_names}",
+        f"Regions   : {len(region_values)} — {region_names}",
         "=" * 64, "",
         "BOTTOM LINE UP FRONT:",
         f"  {total} total cameras across all active regions.",
-        f"  {expired} EXPIRED (>6mo)  — immediate source-data refresh required.",
-        f"  {stale} STALE (3–6mo) — schedule review within 30 days.",
-        f"  {fresh} FRESH (<3mo)  — no action required.", "",
+        f"  {expired} EXPIRED (>360d) — immediate source-data refresh required.",
+        f"  {stale} STALE (180–360d) — re-pull required.",
+        f"  {review} REVIEW (90–180d) — schedule re-pull.",
+        f"  {current} CURRENT (<90d) — monitor only.", "",
     ]
 
     if expired > 0:
@@ -910,9 +1195,10 @@ def generate_bluf(files_dict, active_names, status_filter):
         lines += [
             f"  [{name.replace('.csv','').upper()}]",
             f"    Total:   {len(df)}",
-            f"    Fresh:   {int((df['color_class']=='green').sum())}",
-            f"    Stale:   {int((df['color_class']=='yellow').sum())}",
-            f"    Expired: {int((df['color_class']=='red').sum())}",
+            f"    Current: {int((df['staleness_status']=='CURRENT').sum())}",
+            f"    Review:  {int((df['staleness_status']=='REVIEW').sum())}",
+            f"    Stale:   {int((df['staleness_status']=='STALE').sum())}",
+            f"    Expired: {int((df['staleness_status']=='EXPIRED').sum())}",
         ]
         if errs:
             lines += [f"    Coord conflicts: {errs} rows — see Conflicts panel"]
@@ -921,8 +1207,9 @@ def generate_bluf(files_dict, active_names, status_filter):
     lines += [
         "─" * 64,
         "NEXT REVIEW DATES:",
-        f"  3-month : {(datetime.date.today()+datetime.timedelta(days=90)).isoformat()}",
-        f"  6-month : {(datetime.date.today()+datetime.timedelta(days=180)).isoformat()}",
+        f"  90-day  : {(datetime.date.today()+datetime.timedelta(days=90)).isoformat()}",
+        f"  180-day : {(datetime.date.today()+datetime.timedelta(days=180)).isoformat()}",
+        f"  360-day : {(datetime.date.today()+datetime.timedelta(days=360)).isoformat()}",
         "",
         "=" * 64,
         "ETHICAL USE: Data sourced from approved passive OSINT exports only.",
@@ -930,6 +1217,80 @@ def generate_bluf(files_dict, active_names, status_filter):
         "=" * 64,
     ]
     return "\n".join(lines)
+
+
+def render_collection_schedule(files_dict, active_names, status_filter):
+    """COA 1 panel: show per-poc_batch refresh schedule against 90/180/360 thresholds."""
+    frames = []
+    for name in active_names:
+        if name not in files_dict:
+            continue
+        df = files_dict[name]["df"].copy()
+        df = df[df["staleness_status"].isin(status_filter)]
+        if df.empty:
+            continue
+        df["source_file"] = name
+        frames.append(df)
+
+    if not frames:
+        st.info("No active rows available for collection schedule.")
+        return
+
+    df_all = pd.concat(frames, ignore_index=True)
+    if "poc_batch" not in df_all.columns:
+        st.info("Collection schedule unavailable: `poc_batch` column is missing.")
+        return
+
+    df_all["poc_batch"] = df_all["poc_batch"].astype(str).str.strip()
+    df_all = df_all[df_all["poc_batch"] != ""]
+    if df_all.empty:
+        st.info("Collection schedule unavailable: no populated `poc_batch` values in active data.")
+        return
+
+    today = datetime.date.today()
+    df_all["_last_seen_dt"] = df_all["last_seen"].apply(parse_last_seen_date)
+
+    rows = []
+    for batch, sub in df_all.groupby("poc_batch", dropna=True):
+        sub_valid = sub[sub["_last_seen_dt"].notna()].copy()
+
+        if sub_valid.empty:
+            oldest_date = None
+            age_days = None
+        else:
+            oldest_date = sub_valid["_last_seen_dt"].min()
+            age_days = int((today - oldest_date).days)
+
+        regions = []
+        if "region" in sub.columns:
+            regions = sorted({str(v).strip() for v in sub["region"].dropna().astype(str) if str(v).strip()})
+
+        rows.append(
+            {
+                "poc_batch": batch,
+                "rows": int(len(sub)),
+                "regions": ", ".join(regions) if regions else "N/A",
+                "oldest_last_seen": oldest_date.isoformat() if oldest_date else "N/A",
+                "oldest_age_days": age_days if age_days is not None else "N/A",
+                "to_90d": (max(0, 90 - age_days) if age_days is not None else "N/A"),
+                "to_180d": (max(0, 180 - age_days) if age_days is not None else "N/A"),
+                "to_360d": (max(0, 360 - age_days) if age_days is not None else "N/A"),
+                "current": int((sub["staleness_status"] == "CURRENT").sum()),
+                "review": int((sub["staleness_status"] == "REVIEW").sum()),
+                "stale": int((sub["staleness_status"] == "STALE").sum()),
+                "expired": int((sub["staleness_status"] == "EXPIRED").sum()),
+            }
+        )
+
+    sched_df = pd.DataFrame(rows).sort_values(by=["expired", "stale", "review", "rows"], ascending=False)
+    st.dataframe(sched_df, use_container_width=True, hide_index=True)
+    st.download_button(
+        "⬇ Collection Schedule CSV",
+        data=sched_df.to_csv(index=False).encode("utf-8"),
+        file_name=f"wraith_collection_schedule_{today.isoformat()}.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -979,64 +1340,66 @@ def render_sidebar(files_dict):
         ),
     )
 
-    # Quick local sample loaders (avoids file-picker confusion)
-    st.sidebar.caption("Quick load local samples")
-    load_sample_decimal = st.sidebar.button(
-        "Load sample_cameras_decimal.csv",
-        help="Loads the project-root sample file directly into WRAITH.",
-    )
-    load_sample_combined = st.sidebar.button(
-        "Load sample_cameras_combined.csv",
-        help="Loads the project-root combined-coordinate sample file directly into WRAITH.",
-    )
-
     st.sidebar.markdown("---")
 
     # ── Layer controls — one row per loaded file ──────────────────────────────
     active_names = []
     if files_dict:
-        st.sidebar.markdown('<div class="section-label">Layers</div>', unsafe_allow_html=True)
-
-        to_remove = []
-        for name, fdata in files_dict.items():
-            c1, c2 = st.sidebar.columns([6, 1])
-            with c1:
+        with st.sidebar.expander("Layers", expanded=True):
+            for name, fdata in files_dict.items():
                 visible = st.checkbox(
                     f"{name.replace('.csv','')}",
                     value=True,
                     key=f"layer_{name}",
                 )
-            with c2:
-                if st.button("✕", key=f"rm_{name}", help=f"Remove {name}"):
-                    to_remove.append(name)
 
-            # Color swatch + camera count + conflict warning
-            conflict_note = f"  ⚡ {len(fdata['errors'])} conflicts" if fdata["errors"] else ""
-            st.sidebar.markdown(
-                f'<div style="margin:-12px 0 6px 22px;font-size:0.65rem;color:#475569">'
-                f'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;'
-                f'background:{fdata["color"]};margin-right:4px;vertical-align:middle"></span>'
-                f'{len(fdata["df"])} cameras{conflict_note}</div>',
-                unsafe_allow_html=True,
-            )
+                # Keep metadata in native Streamlit text to avoid CSS overlap issues.
+                conflict_note = f" · ⚡ {len(fdata['errors'])} conflicts" if fdata["errors"] else ""
+                st.caption(f"{len(fdata['df'])} cameras{conflict_note}")
 
-            if visible:
-                active_names.append(name)
+                if st.button(
+                    f"Remove {name.replace('.csv', '')}",
+                    key=f"rm_{name}",
+                    use_container_width=True,
+                ):
+                    if name in st.session_state.files:
+                        del st.session_state.files[name]
+                        st.rerun()
 
-        # Process removals after iterating
-        for name in to_remove:
-            if name in st.session_state.files:
-                del st.session_state.files[name]
-        if to_remove:
-            st.rerun()
+                st.markdown("---")
+
+                if visible:
+                    active_names.append(name)
+
+    st.sidebar.markdown("---")
+
+    # ── Admin access (metrics) ────────────────────────────────────────────────
+    st.sidebar.markdown('<div class="section-label">Admin Access</div>', unsafe_allow_html=True)
+    admin_phrase = os.getenv("ADMIN_METRICS_PASSPHRASE", "wraith")
+    admin_input = st.sidebar.text_input("Metrics passphrase", type="password", key="admin_metrics_phrase_input")
+    a1, a2 = st.sidebar.columns(2)
+    with a1:
+        if st.button("Unlock", use_container_width=True):
+            if admin_input and admin_input == admin_phrase:
+                st.session_state.admin_metrics_ok = True
+                st.sidebar.success("Admin metrics unlocked")
+            else:
+                st.session_state.admin_metrics_ok = False
+                st.sidebar.error("Invalid passphrase")
+    with a2:
+        if st.button("Lock", use_container_width=True):
+            st.session_state.admin_metrics_ok = False
 
     st.sidebar.markdown("---")
 
     # ── Panel selector ────────────────────────────────────────────────────────
     st.sidebar.markdown('<div class="section-label">View</div>', unsafe_allow_html=True)
+    view_options = ["Globe", "Flat Map", "Heatmap", "Data Table", "Conflicts", "Alerts & Export"]
+    if st.session_state.admin_metrics_ok:
+        view_options.append("Metrics")
     view = st.sidebar.radio(
         "Panel",
-        options=["Globe", "Flat Map", "Heatmap", "Data Table", "Conflicts", "Alerts & Export"],
+        options=view_options,
         label_visibility="collapsed",
     )
 
@@ -1095,8 +1458,8 @@ def render_sidebar(files_dict):
 
     status_filter = st.sidebar.multiselect(
         "Staleness",
-        options=["FRESH", "STALE", "EXPIRED"],
-        default=["FRESH", "STALE", "EXPIRED"],
+        options=STALENESS_ORDER,
+        default=STALENESS_ORDER,
     )
 
     country_filter = []
@@ -1126,8 +1489,8 @@ def render_sidebar(files_dict):
     return (
         uploaded_files, view, auto_rotate,
         status_filter, country_filter, email_enabled, active_names,
-        load_sample_decimal, load_sample_combined,
         heat_tile_style, heat_use_cluster, heat_marker_radius, heat_radius, heat_show_minimap,
+        st.session_state.admin_metrics_ok,
     )
 
 
@@ -1137,8 +1500,19 @@ def render_sidebar(files_dict):
 
 def main():
     init_session()
+    apply_splash_background()
 
     # ── Header ────────────────────────────────────────────────────────────────
+    if LOGO_SVG_PATH.exists():
+        try:
+            svg = LOGO_SVG_PATH.read_text(encoding="utf-8")
+            st.markdown(
+                f'<div style="max-width:120px;margin-bottom:0.4rem">{svg}</div>',
+                unsafe_allow_html=True,
+            )
+        except Exception:
+            pass
+
     st.markdown(
         '<div class="cw-header">'
         '<h1>◈ WRAITH</h1>'
@@ -1152,25 +1526,11 @@ def main():
     # ── Sidebar ───────────────────────────────────────────────────────────────
     (uploaded_files, view, auto_rotate,
      status_filter, country_filter, email_enabled, active_names,
-     load_sample_decimal, load_sample_combined,
-     heat_tile_style, heat_use_cluster, heat_marker_radius, heat_radius, heat_show_minimap) = render_sidebar(files_dict)
+     heat_tile_style, heat_use_cluster, heat_marker_radius, heat_radius, heat_show_minimap,
+     admin_metrics_ok) = render_sidebar(files_dict)
 
     # Build a unified list of incoming files from uploader + local sample buttons.
     incoming_files = list(uploaded_files) if uploaded_files else []
-
-    if load_sample_decimal:
-        p = Path("sample_cameras_decimal.csv")
-        if p.exists():
-            incoming_files.append(str(p))
-        else:
-            st.error("Local sample not found: sample_cameras_decimal.csv")
-
-    if load_sample_combined:
-        p = Path("sample_cameras_combined.csv")
-        if p.exists():
-            incoming_files.append(str(p))
-        else:
-            st.error("Local sample not found: sample_cameras_combined.csv")
 
     # ── Ingest newly uploaded files ───────────────────────────────────────────
     if incoming_files:
@@ -1263,37 +1623,52 @@ def main():
         filtered_dict = {n: files_dict[n] for n in active_names if n in files_dict}
 
     # ── KPI cards ─────────────────────────────────────────────────────────────
-    total, fresh, stale, expired = render_kpis(filtered_dict, active_names, status_filter)
+    total, current, review, stale, expired, region_count, layer_count = render_kpis(filtered_dict, active_names, status_filter)
 
     # ── Top-level alert banners ───────────────────────────────────────────────
     if expired > 0:
         # Collect expired locations across all active files
         exp_locs = []
         for fd in filtered_dict.values():
-            df = fd["df"][fd["df"]["color_class"] == "red"]
+            df = fd["df"][fd["df"]["staleness_status"] == "EXPIRED"]
             exp_locs.extend(df["location_label"].unique().tolist())
         loc_str = ", ".join(str(l) for l in exp_locs[:5])
         if len(exp_locs) > 5:
             loc_str += f" +{len(exp_locs)-5} more"
         st.markdown(
             f'<div class="alert-banner alert-red">'
-            f'🔴 <b>IMMEDIATE ACTION:</b> {expired} camera(s) expired (&gt;6mo) across '
-            f'{len([n for n in active_names if (filtered_dict.get(n,{}).get("df") is not None and (filtered_dict[n]["df"]["color_class"]=="red").any())])} '
+            f'🔴 <b>IMMEDIATE ACTION:</b> {expired} camera(s) expired (&gt;360d) across '
+            f'{len([n for n in active_names if (filtered_dict.get(n,{}).get("df") is not None and (filtered_dict[n]["df"]["staleness_status"]=="EXPIRED").any())])} '
             f'region(s). Locations: {loc_str}</div>',
+            unsafe_allow_html=True,
+        )
+
+    if review > 0:
+        rv_locs = []
+        for fd in filtered_dict.values():
+            df = fd["df"][fd["df"]["staleness_status"] == "REVIEW"]
+            rv_locs.extend(df["location_label"].unique().tolist())
+        loc_str = ", ".join(str(l) for l in rv_locs[:5])
+        if len(rv_locs) > 5:
+            loc_str += f" +{len(rv_locs)-5} more"
+        st.markdown(
+            f'<div class="alert-banner alert-yellow">'
+            f'🟡 <b>REVIEW SOON:</b> {review} camera(s) at 90–180 days. '
+            f'Locations: {loc_str}</div>',
             unsafe_allow_html=True,
         )
 
     if stale > 0:
         stl_locs = []
         for fd in filtered_dict.values():
-            df = fd["df"][fd["df"]["color_class"] == "yellow"]
+            df = fd["df"][fd["df"]["staleness_status"] == "STALE"]
             stl_locs.extend(df["location_label"].unique().tolist())
         loc_str = ", ".join(str(l) for l in stl_locs[:5])
         if len(stl_locs) > 5:
             loc_str += f" +{len(stl_locs)-5} more"
         st.markdown(
-            f'<div class="alert-banner alert-yellow">'
-            f'🟡 <b>REVIEW SOON:</b> {stale} camera(s) approaching 6-month threshold. '
+            f'<div class="alert-banner alert-warn">'
+            f'🟠 <b>STALE:</b> {stale} camera(s) at 180–360 days. Re-pull required. '
             f'Locations: {loc_str}</div>',
             unsafe_allow_html=True,
         )
@@ -1375,8 +1750,9 @@ def main():
 
             def style_status(val):
                 return {
-                    "FRESH":   "color:#22c55e;font-weight:600",
-                    "STALE":   "color:#eab308;font-weight:600",
+                    "CURRENT": "color:#22c55e;font-weight:600",
+                    "REVIEW":  "color:#eab308;font-weight:600",
+                    "STALE":   "color:#f97316;font-weight:600",
                     "EXPIRED": "color:#ef4444;font-weight:600",
                 }.get(val, "")
 
@@ -1404,6 +1780,10 @@ def main():
 
         bluf_text = generate_bluf(filtered_dict, active_names, status_filter)
         st.text_area("BLUF Summary", value=bluf_text, height=400)
+
+        st.markdown("---")
+        st.markdown('<div class="section-label">Collection Schedule (by poc_batch)</div>', unsafe_allow_html=True)
+        render_collection_schedule(filtered_dict, active_names, status_filter)
 
         col1, col2, col3 = st.columns(3)
 
@@ -1472,6 +1852,12 @@ def main():
                 st.success("Email sent.") if ok else st.error(f"Failed: {msg}")
         else:
             st.caption("Enable 'Email Alerts' in the sidebar to unlock manual send.")
+
+    elif view == "Metrics":
+        if not admin_metrics_ok:
+            st.warning("Admin metrics are locked. Unlock using the sidebar passphrase.")
+        else:
+            render_metrics_panel(files_dict, filtered_dict, active_names, status_filter)
 
 
 if __name__ == "__main__":

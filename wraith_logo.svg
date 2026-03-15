@@ -1,0 +1,277 @@
+<svg width="100%" viewBox="0 0 680 720" xmlns="http://www.w3.org/2000/svg">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@700&amp;family=Share+Tech+Mono&amp;display=swap');
+</style>
+
+<defs>
+  <radialGradient id="cityGlow" cx="50%" cy="80%" r="60%">
+    <stop offset="0%" stop-color="#1a3a6a" stop-opacity="0.8"/>
+    <stop offset="60%" stop-color="#0a1828" stop-opacity="0.4"/>
+    <stop offset="100%" stop-color="#020608" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="horizonGlow" cx="50%" cy="100%" r="55%">
+    <stop offset="0%" stop-color="#e87020" stop-opacity="0.35"/>
+    <stop offset="40%" stop-color="#a04010" stop-opacity="0.15"/>
+    <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+  </radialGradient>
+  <clipPath id="lensClipCity">
+    <circle cx="340" cy="265" r="95"/>
+  </clipPath>
+</defs>
+
+<rect width="680" height="720" fill="#05080e"/>
+
+<circle cx="340" cy="265" r="230" fill="none" stroke="#090f18" stroke-width="42"/>
+<circle cx="340" cy="265" r="220" fill="#06101a" stroke="#1a3a58" stroke-width="1"/>
+<circle cx="340" cy="265" r="208" fill="none" stroke="#0e2035" stroke-width="0.5"/>
+<circle cx="340" cy="265" r="220" fill="none" stroke="#1e4060" stroke-width="0.7" stroke-dasharray="2 7"/>
+
+<g transform="translate(340,265)" opacity="0.15">
+  <line x1="0" y1="-220" x2="0" y2="220" stroke="#1e5080" stroke-width="0.4"/>
+  <line x1="-220" y1="0" x2="220" y2="0" stroke="#1e5080" stroke-width="0.4"/>
+  <line x1="-155" y1="-155" x2="155" y2="155" stroke="#1a3a58" stroke-width="0.3"/>
+  <line x1="155" y1="-155" x2="-155" y2="155" stroke="#1a3a58" stroke-width="0.3"/>
+  <circle cx="0" cy="0" r="110" fill="none" stroke="#1a3a58" stroke-width="0.3"/>
+  <circle cx="0" cy="0" r="160" fill="none" stroke="#1a3a58" stroke-width="0.3"/>
+</g>
+
+<g transform="translate(340,265)">
+  <line x1="0" y1="-220" x2="0" y2="-205" stroke="#4a9ad4" stroke-width="2"/>
+  <line x1="0" y1="205" x2="0" y2="220" stroke="#4a9ad4" stroke-width="2"/>
+  <line x1="-220" y1="0" x2="-205" y2="0" stroke="#4a9ad4" stroke-width="2"/>
+  <line x1="205" y1="0" x2="220" y2="0" stroke="#4a9ad4" stroke-width="2"/>
+  <line x1="155" y1="-155" x2="144" y2="-144" stroke="#3a7ab8" stroke-width="1.5"/>
+  <line x1="-155" y1="-155" x2="-144" y2="-144" stroke="#3a7ab8" stroke-width="1.5"/>
+  <line x1="155" y1="155" x2="144" y2="144" stroke="#3a7ab8" stroke-width="1.5"/>
+  <line x1="-155" y1="155" x2="-144" y2="144" stroke="#3a7ab8" stroke-width="1.5"/>
+  <circle cx="0" cy="-220" r="4" fill="#5aaae8"/>
+  <circle cx="0" cy="220" r="4" fill="#5aaae8"/>
+  <circle cx="-220" cy="0" r="4" fill="#5aaae8"/>
+  <circle cx="220" cy="0" r="4" fill="#5aaae8"/>
+  <circle cx="155" cy="-155" r="3" fill="#3a7ab8"/>
+  <circle cx="-155" cy="-155" r="3" fill="#3a7ab8"/>
+  <circle cx="155" cy="155" r="3" fill="#3a7ab8"/>
+  <circle cx="-155" cy="155" r="3" fill="#3a7ab8"/>
+</g>
+
+<g transform="translate(340,265)">
+  <circle cx="0" cy="0" r="148" fill="none" stroke="#1e4868" stroke-width="1.5"/>
+  <circle cx="0" cy="0" r="138" fill="none" stroke="#0e2a42" stroke-width="8"/>
+  <circle cx="0" cy="0" r="132" fill="#081420" stroke="#162e48" stroke-width="1"/>
+  <path d="M -92,-92 A 130,130 0 0,1 92,-92" fill="none" stroke="#0e2035" stroke-width="14"/>
+  <path d="M 92,92 A 130,130 0 0,1 -92,92" fill="none" stroke="#0e2035" stroke-width="14"/>
+  <circle cx="0" cy="0" r="108" fill="#091828" stroke="#1a3a5a" stroke-width="1.2"/>
+</g>
+
+<g clip-path="url(#lensClipCity)">
+  <rect x="245" y="170" width="190" height="190" fill="#040810"/>
+  <rect x="245" y="170" width="190" height="190" fill="url(#cityGlow)"/>
+  <rect x="245" y="170" width="190" height="190" fill="url(#horizonGlow)"/>
+  <rect x="245" y="300" width="190" height="60" fill="#08111e"/>
+
+  <rect x="248" y="278" width="14" height="22" fill="#0c1e30"/>
+  <rect x="249" y="272" width="12" height="8" fill="#0e2238"/>
+  <rect x="251" y="266" width="8" height="8" fill="#0e2238"/>
+  <rect x="265" y="268" width="18" height="32" fill="#0c1e30"/>
+  <rect x="266" y="262" width="16" height="8" fill="#0e2238"/>
+  <rect x="269" y="256" width="10" height="8" fill="#102540"/>
+  <rect x="271" y="252" width="6" height="5" fill="#102540"/>
+  <rect x="286" y="274" width="12" height="26" fill="#0c1e30"/>
+  <rect x="287" y="268" width="10" height="8" fill="#0e2238"/>
+  <rect x="301" y="258" width="22" height="42" fill="#0e2238"/>
+  <rect x="302" y="250" width="20" height="10" fill="#102848"/>
+  <rect x="305" y="242" width="14" height="10" fill="#122a4a"/>
+  <rect x="308" y="235" width="8" height="9" fill="#142c4c"/>
+  <rect x="310" y="230" width="4" height="6" fill="#e87020" opacity="0.7"/>
+  <rect x="326" y="264" width="16" height="36" fill="#0c2030"/>
+  <rect x="327" y="256" width="14" height="10" fill="#0e2540"/>
+  <rect x="329" y="248" width="10" height="10" fill="#102848"/>
+  <rect x="331" y="243" width="6" height="6" fill="#4a9ad4" opacity="0.3"/>
+  <rect x="345" y="255" width="28" height="45" fill="#0e2238"/>
+  <rect x="346" y="245" width="26" height="12" fill="#102540"/>
+  <rect x="349" y="235" width="20" height="12" fill="#122848"/>
+  <rect x="352" y="226" width="14" height="11" fill="#142a4a"/>
+  <rect x="355" y="218" width="8" height="10" fill="#162c50"/>
+  <rect x="357" y="213" width="4" height="6" fill="#e83030" opacity="0.8"/>
+  <rect x="376" y="268" width="20" height="32" fill="#0c1e30"/>
+  <rect x="377" y="260" width="18" height="10" fill="#0e2238"/>
+  <rect x="379" y="252" width="14" height="10" fill="#102540"/>
+  <rect x="381" y="246" width="10" height="7" fill="#102540"/>
+  <rect x="399" y="275" width="16" height="25" fill="#0c1e30"/>
+  <rect x="400" y="268" width="14" height="9" fill="#0e2238"/>
+  <rect x="402" y="262" width="10" height="8" fill="#0e2238"/>
+  <rect x="418" y="270" width="12" height="30" fill="#0c1e30"/>
+  <rect x="419" y="264" width="10" height="8" fill="#0e2238"/>
+
+  <rect x="249" y="280" width="2" height="1" fill="#e8d870" opacity="0.5"/>
+  <rect x="253" y="276" width="2" height="1" fill="#e8d870" opacity="0.4"/>
+  <rect x="249" y="284" width="2" height="1" fill="#e8d870" opacity="0.3"/>
+  <rect x="268" y="272" width="2" height="2" fill="#e8d870" opacity="0.5"/>
+  <rect x="272" y="268" width="2" height="2" fill="#ffa040" opacity="0.4"/>
+  <rect x="276" y="272" width="2" height="2" fill="#e8d870" opacity="0.4"/>
+  <rect x="268" y="278" width="2" height="2" fill="#e8d870" opacity="0.35"/>
+  <rect x="274" y="278" width="2" height="2" fill="#e8d870" opacity="0.35"/>
+  <rect x="278" y="276" width="2" height="2" fill="#e8d870" opacity="0.3"/>
+  <rect x="303" y="270" width="3" height="2" fill="#e8d870" opacity="0.5"/>
+  <rect x="308" y="270" width="3" height="2" fill="#ffa040" opacity="0.45"/>
+  <rect x="314" y="270" width="3" height="2" fill="#e8d870" opacity="0.4"/>
+  <rect x="319" y="270" width="3" height="2" fill="#e8d870" opacity="0.4"/>
+  <rect x="303" y="276" width="3" height="2" fill="#e8d870" opacity="0.4"/>
+  <rect x="309" y="276" width="3" height="2" fill="#e8d870" opacity="0.35"/>
+  <rect x="315" y="276" width="3" height="2" fill="#ffa040" opacity="0.35"/>
+  <rect x="303" y="282" width="3" height="2" fill="#e8d870" opacity="0.3"/>
+  <rect x="310" y="282" width="3" height="2" fill="#e8d870" opacity="0.3"/>
+  <rect x="317" y="282" width="3" height="2" fill="#e8d870" opacity="0.3"/>
+  <rect x="347" y="265" width="3" height="2" fill="#ffa040" opacity="0.55"/>
+  <rect x="353" y="265" width="3" height="2" fill="#e8d870" opacity="0.5"/>
+  <rect x="359" y="265" width="3" height="2" fill="#e8d870" opacity="0.45"/>
+  <rect x="365" y="265" width="3" height="2" fill="#ffa040" opacity="0.45"/>
+  <rect x="347" y="272" width="3" height="2" fill="#e8d870" opacity="0.45"/>
+  <rect x="354" y="272" width="3" height="2" fill="#e8d870" opacity="0.4"/>
+  <rect x="361" y="272" width="3" height="2" fill="#e8d870" opacity="0.4"/>
+  <rect x="347" y="279" width="3" height="2" fill="#e8d870" opacity="0.35"/>
+  <rect x="355" y="279" width="3" height="2" fill="#ffa040" opacity="0.35"/>
+  <rect x="362" y="279" width="3" height="2" fill="#e8d870" opacity="0.3"/>
+  <rect x="347" y="286" width="3" height="2" fill="#e8d870" opacity="0.3"/>
+  <rect x="378" y="270" width="2" height="2" fill="#e8d870" opacity="0.5"/>
+  <rect x="382" y="270" width="2" height="2" fill="#e8d870" opacity="0.45"/>
+  <rect x="386" y="270" width="2" height="2" fill="#ffa040" opacity="0.4"/>
+  <rect x="390" y="270" width="2" height="2" fill="#e8d870" opacity="0.4"/>
+  <rect x="378" y="276" width="2" height="2" fill="#e8d870" opacity="0.35"/>
+  <rect x="384" y="276" width="2" height="2" fill="#e8d870" opacity="0.35"/>
+  <rect x="389" y="276" width="2" height="2" fill="#e8d870" opacity="0.3"/>
+  <rect x="401" y="277" width="2" height="2" fill="#e8d870" opacity="0.45"/>
+  <rect x="405" y="277" width="2" height="2" fill="#e8d870" opacity="0.4"/>
+  <rect x="409" y="277" width="2" height="2" fill="#ffa040" opacity="0.35"/>
+  <rect x="401" y="283" width="2" height="2" fill="#e8d870" opacity="0.35"/>
+  <rect x="407" y="283" width="2" height="2" fill="#e8d870" opacity="0.3"/>
+  <rect x="412" y="283" width="2" height="2" fill="#e8d870" opacity="0.3"/>
+
+  <line x1="245" y1="310" x2="435" y2="310" stroke="#0e2035" stroke-width="0.6" opacity="0.8"/>
+  <line x1="245" y1="315" x2="435" y2="315" stroke="#0c1828" stroke-width="0.4" opacity="0.6"/>
+  <line x1="270" y1="300" x2="270" y2="360" stroke="#0e1e30" stroke-width="1.5"/>
+  <line x1="310" y1="300" x2="310" y2="360" stroke="#0e1e30" stroke-width="1.5"/>
+  <line x1="360" y1="300" x2="360" y2="360" stroke="#0e1e30" stroke-width="1.5"/>
+  <line x1="400" y1="300" x2="400" y2="360" stroke="#0e1e30" stroke-width="1.5"/>
+  <rect x="255" y="302" width="8" height="5" fill="#ffa040" opacity="0.2"/>
+  <rect x="280" y="302" width="8" height="5" fill="#e8d870" opacity="0.15"/>
+  <rect x="320" y="302" width="8" height="5" fill="#ffa040" opacity="0.18"/>
+  <rect x="370" y="302" width="8" height="5" fill="#e8d870" opacity="0.15"/>
+  <rect x="408" y="302" width="8" height="5" fill="#ffa040" opacity="0.18"/>
+  <line x1="245" y1="300" x2="435" y2="300" stroke="#162a40" stroke-width="1" opacity="0.6"/>
+  <rect x="245" y="170" width="190" height="70" fill="#030710" opacity="0.7"/>
+
+  <circle cx="310" cy="195" r="1" fill="#e8f0ff" opacity="0.8"/>
+  <circle cx="328" cy="182" r="0.8" fill="#e8f0ff" opacity="0.7"/>
+  <circle cx="355" cy="190" r="1" fill="#fffde8" opacity="0.75"/>
+  <circle cx="375" cy="178" r="0.8" fill="#e8f0ff" opacity="0.65"/>
+  <circle cx="390" cy="188" r="0.8" fill="#fffde8" opacity="0.6"/>
+  <circle cx="260" cy="185" r="0.8" fill="#e8f0ff" opacity="0.55"/>
+  <circle cx="278" cy="176" r="0.6" fill="#e8f0ff" opacity="0.5"/>
+  <circle cx="295" cy="183" r="0.6" fill="#fffde8" opacity="0.5"/>
+  <circle cx="340" cy="175" r="0.8" fill="#e8f0ff" opacity="0.6"/>
+  <circle cx="408" cy="180" r="0.6" fill="#e8f0ff" opacity="0.5"/>
+  <circle cx="420" cy="186" r="0.6" fill="#fffde8" opacity="0.45"/>
+  <circle cx="430" cy="178" r="0.5" fill="#e8f0ff" opacity="0.4"/>
+  <path d="M 245,220 Q 290,215 310,218 Q 340,210 370,214 Q 400,210 435,215" fill="none" stroke="#4a9ad4" stroke-width="0.5" opacity="0.25"/>
+</g>
+
+<g transform="translate(340,265)">
+  <circle cx="0" cy="0" r="96" fill="none" stroke="#2a6090" stroke-width="0.8"/>
+  <path d="M 0,-96 A 96,96 0 0,1 83,-48" fill="none" stroke="#2a6090" stroke-width="2.5"/>
+  <path d="M 83,-48 A 96,96 0 0,1 83,48" fill="none" stroke="#3a7aaa" stroke-width="2.5"/>
+  <path d="M 83,48 A 96,96 0 0,1 0,96" fill="none" stroke="#2a6090" stroke-width="2.5"/>
+  <path d="M 0,96 A 96,96 0 0,1 -83,48" fill="none" stroke="#2a6090" stroke-width="2.5"/>
+  <path d="M -83,48 A 96,96 0 0,1 -83,-48" fill="none" stroke="#3a7aaa" stroke-width="2.5"/>
+  <path d="M -83,-48 A 96,96 0 0,1 0,-96" fill="none" stroke="#2a6090" stroke-width="2.5"/>
+  <circle cx="0" cy="-96" r="4" fill="#5aaae8"/>
+  <circle cx="83" cy="-48" r="4" fill="#5aaae8"/>
+  <circle cx="83" cy="48" r="4" fill="#5aaae8"/>
+  <circle cx="0" cy="96" r="4" fill="#5aaae8"/>
+  <circle cx="-83" cy="48" r="4" fill="#5aaae8"/>
+  <circle cx="-83" cy="-48" r="4" fill="#5aaae8"/>
+  <circle cx="0" cy="0" r="78" fill="none" stroke="#2a5a80" stroke-width="0.8"/>
+  <circle cx="0" cy="0" r="64" fill="none" stroke="#1e4060" stroke-width="0.6"/>
+  <circle cx="0" cy="0" r="60" fill="none" stroke="#3a6a90" stroke-width="0.5" stroke-dasharray="3 5"/>
+  <circle cx="0" cy="0" r="44" fill="none" stroke="#4a8ab8" stroke-width="1.2"/>
+  <circle cx="0" cy="0" r="40" fill="none" stroke="#2a5a80" stroke-width="0.6"/>
+  <circle cx="0" cy="0" r="28" fill="none" stroke="#5aaae8" stroke-width="1.6"/>
+  <circle cx="0" cy="0" r="18" fill="none" stroke="#6abaf8" stroke-width="0.9"/>
+  <circle cx="0" cy="0" r="9" fill="#4a9ad4"/>
+  <circle cx="0" cy="0" r="6" fill="#7acaf8"/>
+  <circle cx="0" cy="0" r="3" fill="#c8f0ff"/>
+  <circle cx="-4" cy="-4" r="3.5" fill="#ffffff" opacity="0.12"/>
+  <line x1="0" y1="-44" x2="0" y2="-30" stroke="#4a9ad4" stroke-width="1.2" opacity="0.9"/>
+  <line x1="0" y1="30" x2="0" y2="44" stroke="#4a9ad4" stroke-width="1.2" opacity="0.9"/>
+  <line x1="-44" y1="0" x2="-30" y2="0" stroke="#4a9ad4" stroke-width="1.2" opacity="0.9"/>
+  <line x1="30" y1="0" x2="44" y2="0" stroke="#4a9ad4" stroke-width="1.2" opacity="0.9"/>
+  <line x1="31" y1="-31" x2="21" y2="-21" stroke="#3a8ab8" stroke-width="0.8" opacity="0.7"/>
+  <line x1="-31" y1="-31" x2="-21" y2="-21" stroke="#3a8ab8" stroke-width="0.8" opacity="0.7"/>
+  <line x1="31" y1="31" x2="21" y2="21" stroke="#3a8ab8" stroke-width="0.8" opacity="0.7"/>
+  <line x1="-31" y1="31" x2="-21" y2="21" stroke="#3a8ab8" stroke-width="0.8" opacity="0.7"/>
+  <line x1="-78" y1="-20" x2="-64" y2="-20" stroke="#20c050" stroke-width="1.5" opacity="0.8"/>
+  <line x1="-78" y1="-12" x2="-64" y2="-12" stroke="#20c050" stroke-width="1" opacity="0.5"/>
+  <line x1="-78" y1="-4" x2="-70" y2="-4" stroke="#20c050" stroke-width="1" opacity="0.4"/>
+  <text x="-76" y="14" font-family="'Share Tech Mono',monospace" font-size="7" fill="#20c050" opacity="0.7">REC</text>
+  <circle cx="-82" cy="10" r="3" fill="#e83030" opacity="0.85"/>
+  <text x="52" y="-52" font-family="'Share Tech Mono',monospace" font-size="6" fill="#4a9ad4" opacity="0.7">IR</text>
+  <circle cx="66" cy="-58" r="2.5" fill="#e8a030" opacity="0.6"/>
+  <circle cx="72" cy="-50" r="2" fill="#e8a030" opacity="0.4"/>
+  <circle cx="76" cy="-40" r="1.5" fill="#e8a030" opacity="0.3"/>
+  <text x="-10" y="86" font-family="'Share Tech Mono',monospace" font-size="6.5" fill="#3a7ab8" opacity="0.65">720P</text>
+  <text x="38" y="68" font-family="'Share Tech Mono',monospace" font-size="5.5" fill="#2a6a90" opacity="0.6">FOG</text>
+  <g opacity="0.5">
+    <rect x="-114" y="-26" width="20" height="22" rx="1" fill="none" stroke="#2a8060" stroke-width="0.7"/>
+    <line x1="-108" y1="-22" x2="-98" y2="-22" stroke="#2a8060" stroke-width="1.2"/>
+    <line x1="-108" y1="-16" x2="-98" y2="-16" stroke="#2a8060" stroke-width="1.2"/>
+    <line x1="-108" y1="-10" x2="-100" y2="-10" stroke="#2a8060" stroke-width="0.8"/>
+  </g>
+  <g opacity="0.5">
+    <rect x="94" y="-26" width="20" height="22" rx="1" fill="none" stroke="#2a8060" stroke-width="0.7"/>
+    <line x1="98" y1="-22" x2="108" y2="-22" stroke="#2a8060" stroke-width="1.2"/>
+    <line x1="98" y1="-16" x2="108" y2="-16" stroke="#2a8060" stroke-width="1.2"/>
+    <line x1="100" y1="-10" x2="108" y2="-10" stroke="#2a8060" stroke-width="0.8"/>
+  </g>
+</g>
+
+<g opacity="0.5">
+  <line x1="232" y1="157" x2="248" y2="167" stroke="#e8a030" stroke-width="1"/>
+  <circle cx="230" cy="155" r="3" fill="#e8a030" opacity="0.8"/>
+  <line x1="448" y1="157" x2="432" y2="167" stroke="#e8a030" stroke-width="1"/>
+  <circle cx="450" cy="155" r="3" fill="#e8a030" opacity="0.8"/>
+  <line x1="232" y1="373" x2="248" y2="363" stroke="#e8a030" stroke-width="1"/>
+  <circle cx="230" cy="375" r="3" fill="#e8a030" opacity="0.8"/>
+  <line x1="448" y1="373" x2="432" y2="363" stroke="#e8a030" stroke-width="1"/>
+  <circle cx="450" cy="375" r="3" fill="#e8a030" opacity="0.8"/>
+</g>
+
+<defs>
+  <path id="outerRingCity" d="M 120,265 A 220,220 0 1,1 560,265 A 220,220 0 1,1 120,265"/>
+</defs>
+<text font-family="'Share Tech Mono', monospace" font-size="7" fill="#2a5a7a" text-anchor="middle" opacity="0.55">
+  <textPath href="#outerRingCity" startOffset="25%">
+    · OVERWATCH · PERSISTENT SURVEILLANCE · GLOBAL REACH · ZERO FOOTPRINT · PASSIVE COLLECTION · SIGDEV · PAI · OSINT ·
+  </textPath>
+</text>
+
+<text x="340" y="576" font-family="'Oswald', monospace" font-size="66" font-weight="700" fill="none" stroke="#1a3a58" stroke-width="6" text-anchor="middle" letter-spacing="18">WRAITH</text>
+<text x="340" y="576" font-family="'Oswald', monospace" font-size="66" font-weight="700" fill="#d8eefa" text-anchor="middle" letter-spacing="18">WRAITH</text>
+
+<line x1="148" y1="587" x2="272" y2="587" stroke="#2a5a8a" stroke-width="0.8"/>
+<line x1="408" y1="587" x2="532" y2="587" stroke="#2a5a8a" stroke-width="0.8"/>
+<rect x="140" y="584" width="6" height="6" fill="#4a9ad4" transform="rotate(45,143,587)"/>
+<rect x="534" y="584" width="6" height="6" fill="#4a9ad4" transform="rotate(45,537,587)"/>
+
+<text x="340" y="604" font-family="'Share Tech Mono', monospace" font-size="8.5" fill="#3a6a8a" text-anchor="middle" letter-spacing="5">WIDE-AREA RECONNAISSANCE</text>
+<text x="340" y="620" font-family="'Share Tech Mono', monospace" font-size="8.5" fill="#3a6a8a" text-anchor="middle" letter-spacing="3">&amp; ASSET INTELLIGENCE TRACKING HUB</text>
+
+<line x1="220" y1="634" x2="460" y2="634" stroke="#0e1e30" stroke-width="0.5"/>
+
+<text x="263" y="651" font-family="'Share Tech Mono', monospace" font-size="7.5" fill="#1e3a56" text-anchor="middle" letter-spacing="2">OSINT</text>
+<circle cx="280" cy="647" r="1.5" fill="#20c050" opacity="0.7"/>
+<text x="340" y="651" font-family="'Share Tech Mono', monospace" font-size="7.5" fill="#1e3a56" text-anchor="middle" letter-spacing="2">PAI</text>
+<circle cx="357" cy="647" r="1.5" fill="#20c050" opacity="0.7"/>
+<text x="415" y="651" font-family="'Share Tech Mono', monospace" font-size="7.5" fill="#1e3a56" text-anchor="middle" letter-spacing="2">SIGDEV</text>
+
+<text x="340" y="676" font-family="'Share Tech Mono', monospace" font-size="7" fill="#0e1e2e" text-anchor="middle" letter-spacing="5">GHOST PROTOCOL · EYES ONLY · VIRTUVMAN</text>
+</svg>

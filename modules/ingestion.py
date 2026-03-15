@@ -24,6 +24,8 @@ REQUIRED_BASE_COLUMNS = [
     "port",
     "org",
     "country",
+    "region",
+    "poc_batch",
 ]
 
 DECIMAL_LAT_COLUMNS = ["latitude", "lat"]
@@ -157,6 +159,8 @@ def load_csv(uploaded_file) -> Tuple[pd.DataFrame, Dict[str, str], List[Dict[str
         "port",
         "org",
         "country",
+        "region",
+        "poc_batch",
     ]
     remaining = [c for c in clean_df.columns if c not in ordered]
     clean_df = clean_df[ordered + remaining]
