@@ -199,10 +199,11 @@ st.markdown("""
 html, body, [class*="css"] { font-family:'Inter',sans-serif; }
 
 .cw-header {
-    display:flex; align-items:baseline; gap:14px;
+    display:flex; align-items:center; gap:14px;
     padding:0.4rem 0 1.2rem;
     border-bottom:1px solid rgba(255,255,255,0.08);
     margin-bottom:1.2rem;
+    flex-wrap:wrap;
 }
 .cw-header h1 {
     font-family:'Share Tech Mono',monospace; font-size:1.5rem;
@@ -211,6 +212,24 @@ html, body, [class*="css"] { font-family:'Inter',sans-serif; }
 .cw-header .cw-sub {
     font-size:0.72rem; color:#64748b;
     letter-spacing:0.08em; text-transform:uppercase;
+    line-height:1.35;
+    max-width:900px;
+}
+.brand-logo-wrap {
+    width:min(100%, 360px);
+    margin:0 0 0.6rem 0;
+}
+.brand-subline {
+    font-size:0.72rem;
+    color:#64748b;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    line-height:1.35;
+    margin-bottom:1rem;
+}
+@media (max-width: 760px) {
+  .cw-header h1 { font-size:1.25rem; letter-spacing:0.08em; }
+  .cw-header .cw-sub, .brand-subline { font-size:0.66rem; }
 }
 
 .kpi-row { display:flex; gap:10px; margin-bottom:1rem; flex-wrap:wrap; }
@@ -1572,23 +1591,33 @@ def main():
     require_pilot_access()
 
     # ── Header ────────────────────────────────────────────────────────────────
+    render_text_header = True
     if LOGO_SVG_PATH.exists():
         try:
             svg = LOGO_SVG_PATH.read_text(encoding="utf-8")
+            # If the SVG already embeds title text, avoid duplicate title rendering below.
+            if "WRAITH" in svg.upper():
+                render_text_header = False
             st.markdown(
-                f'<div style="max-width:120px;margin-bottom:0.4rem">{svg}</div>',
+                f'<div class="brand-logo-wrap">{svg}</div>',
                 unsafe_allow_html=True,
             )
         except Exception:
             pass
 
-    st.markdown(
-        '<div class="cw-header">'
-        '<h1>◈ WRAITH</h1>'
-        '<span class="cw-sub">Wide-area Reconnaissance & Asset Intelligence Tracking Hub</span>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
+    if render_text_header:
+        st.markdown(
+            '<div class="cw-header">'
+            '<h1>◈ WRAITH</h1>'
+            '<span class="cw-sub">Wide-area Reconnaissance & Asset Intelligence Tracking Hub</span>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            '<div class="brand-subline">Wide-area Reconnaissance & Asset Intelligence Tracking Hub</div>',
+            unsafe_allow_html=True,
+        )
 
     files_dict = st.session_state.files
 
