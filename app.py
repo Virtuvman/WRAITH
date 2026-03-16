@@ -71,6 +71,15 @@ def _env_bool(name: str, default: bool = False) -> bool:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on", "y"}
 
+
+def _safe_secret(name: str, default: str = "") -> str:
+    """Safely read a Streamlit secret without crashing when secrets.toml is absent."""
+    try:
+        return str(st.secrets.get(name, default))
+    except Exception:
+        # Local runs often omit .streamlit/secrets.toml; gracefully fall back.
+        return str(default)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CONSTANTS
 # ─────────────────────────────────────────────────────────────────────────────
@@ -114,12 +123,25 @@ elif LOGO_SVG_PATH.exists():
     # SVG may work depending on Streamlit/browser behavior.
     PAGE_ICON = str(LOGO_SVG_PATH)
 
-SPLASH_ENABLED = _env_bool("ENABLE_SPLASH", False)
-SPLASH_BACKGROUND_PATH = Path(os.getenv("SPLASH_BACKGROUND_PATH", "assets/wraith_splash.png"))
+# Splash background defaults ON with automatic logo fallback for hosted pilots.
+SPLASH_ENABLED = _env_bool("ENABLE_SPLASH", True)
+
+_splash_env_path = os.getenv("SPLASH_BACKGROUND_PATH", "").strip()
+if _splash_env_path:
+    SPLASH_BACKGROUND_PATH = Path(_splash_env_path)
+else:
+    _splash_candidates = [
+        Path("assets/wraith_splash.png"),
+        Path("WRAITH Logo.png"),
+        Path("wraith_logo.png"),
+        Path("wraith_logo.svg"),
+    ]
+    SPLASH_BACKGROUND_PATH = next((p for p in _splash_candidates if p.exists()), _splash_candidates[0])
+
 try:
-    SPLASH_OVERLAY_ALPHA = float(os.getenv("SPLASH_OVERLAY_ALPHA", "0.58"))
+    SPLASH_OVERLAY_ALPHA = float(os.getenv("SPLASH_OVERLAY_ALPHA", "0.35"))
 except ValueError:
-    SPLASH_OVERLAY_ALPHA = 0.58
+    SPLASH_OVERLAY_ALPHA = 0.35
 SPLASH_OVERLAY_ALPHA = min(0.9, max(0.0, SPLASH_OVERLAY_ALPHA))
 
 
@@ -333,15 +355,16 @@ def init_session():
 
 def require_pilot_access() -> None:
     """Front-door password gate for hosted pilot access."""
-    access_enabled = _env_bool("PILOT_ACCESS_ENABLED", True)
+    # Default OFF for local/dev usability; enable explicitly for hosted pilots.
+    access_enabled = _env_bool("PILOT_ACCESS_ENABLED", False)
     if not access_enabled:
         return
 
-    expected = st.secrets.get("PILOT_ACCESS_PASSWORD", os.getenv("PILOT_ACCESS_PASSWORD", "")).strip()
+    expected = _safe_secret("PILOT_ACCESS_PASSWORD", os.getenv("PILOT_ACCESS_PASSWORD", "")).strip()
     if not expected:
-        st.error("Pilot access is enabled but no password is configured.")
-        st.caption("Set `PILOT_ACCESS_PASSWORD` in Streamlit secrets or environment variables.")
-        st.stop()
+        st.warning("Pilot access is enabled but no password is configured; gate is bypassed for this run.")
+        st.caption("Set `PILOT_ACCESS_PASSWORD` in Streamlit secrets or environment variables to enforce access control.")
+        return
 
     if "pilot_authed" not in st.session_state:
         st.session_state.pilot_authed = False

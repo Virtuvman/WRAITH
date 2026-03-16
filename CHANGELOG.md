@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.2.1] - 2026-03-16
+
+### Changed
+- Hardened secret loading in `app.py` so missing `.streamlit/secrets.toml` no longer crashes local startup.
+- Pilot access gate behavior updated:
+  - default `PILOT_ACCESS_ENABLED` is now local-friendly (`false` when unset)
+  - if gate is enabled but `PILOT_ACCESS_PASSWORD` is missing, app warns and bypasses instead of hard-stopping.
+- Splash background behavior updated for branding-first defaults:
+  - splash enabled by default unless explicitly disabled
+  - automatic image fallback order now includes `WRAITH Logo.png`, `wraith_logo.png`, `wraith_logo.svg`
+  - default splash overlay alpha tuned to `0.35` for better logo visibility.
+
+### Docs
+- Updated `README.md` for new pilot-gate defaults and splash fallback behavior.
+- Updated `env.example` to reflect current recommended local defaults and splash settings.
+
 ## [0.2.0] - 2026-03-15
 
 ### Added

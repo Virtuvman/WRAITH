@@ -227,6 +227,10 @@ You can disable the gate for local/offline debugging with:
 PILOT_ACCESS_ENABLED=false
 ```
 
+Local default behavior:
+- WRAITH now defaults `PILOT_ACCESS_ENABLED` to `false` when unset.
+- If explicitly enabled but `PILOT_ACCESS_PASSWORD` is missing, the app warns and bypasses the gate (no hard crash/lockout).
+
 ### Logo / Branding
 
 - Place logo assets in project root:
@@ -248,12 +252,15 @@ You can enable a full-page splash/dashboard background image in Streamlit.
 ```env
 ENABLE_SPLASH=true
 SPLASH_BACKGROUND_PATH=assets/wraith_splash.png
-SPLASH_OVERLAY_ALPHA=0.58
+SPLASH_OVERLAY_ALPHA=0.35
 ```
 
 Notes:
 - `SPLASH_OVERLAY_ALPHA` controls readability overlay (0.0–0.9).
-- If the image path is missing/invalid, WRAITH falls back safely to normal background.
+- If the image path is missing/invalid, WRAITH automatically tries logo fallbacks:
+  - `WRAITH Logo.png`
+  - `wraith_logo.png`
+  - `wraith_logo.svg`
 - Recommended: optimize splash image size (compressed PNG/WebP) for faster load.
 
 ---
