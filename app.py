@@ -29,6 +29,7 @@ import base64
 from pathlib import Path
 import datetime
 import time
+import hmac
 import smtplib
 import logging
 from email.mime.text import MIMEText
@@ -355,16 +356,25 @@ def init_session():
 
 def require_pilot_access() -> None:
     """Front-door password gate for hosted pilot access."""
-    # Default OFF for local/dev usability; enable explicitly for hosted pilots.
-    access_enabled = _env_bool("PILOT_ACCESS_ENABLED", False)
+    # Enable gate if explicitly toggled OR if any supported password key is present.
+    # This prevents accidental exposure when password is configured but toggle is omitted.
+    access_enabled_flag = _env_bool("PILOT_ACCESS_ENABLED", False)
+    expected_primary = _safe_secret("PILOT_ACCESS_PASSWORD", os.getenv("PILOT_ACCESS_PASSWORD", "")).strip()
+    expected_legacy = _safe_secret("ACCESS_PASSWORD", os.getenv("ACCESS_PASSWORD", "")).strip()
+    expected = expected_primary or expected_legacy
+    access_enabled = access_enabled_flag or bool(expected)
     if not access_enabled:
         return
 
-    expected = _safe_secret("PILOT_ACCESS_PASSWORD", os.getenv("PILOT_ACCESS_PASSWORD", "")).strip()
     if not expected:
-        st.warning("Pilot access is enabled but no password is configured; gate is bypassed for this run.")
-        st.caption("Set `PILOT_ACCESS_PASSWORD` in Streamlit secrets or environment variables to enforce access control.")
-        return
+        # Fail CLOSED: never bypass when the access gate is enabled.
+        st.title("WRAITH Pilot Access")
+        st.error(
+            "Pilot access is enabled, but `PILOT_ACCESS_PASSWORD` is not configured. "
+            "Access is blocked until a password is set in Streamlit Secrets or environment variables."
+        )
+        st.caption("Required setting: `PILOT_ACCESS_PASSWORD`")
+        st.stop()
 
     if "pilot_authed" not in st.session_state:
         st.session_state.pilot_authed = False
@@ -389,7 +399,8 @@ def require_pilot_access() -> None:
     candidate = st.text_input("Pilot password", type="password", key="pilot_password_input")
 
     if st.button("Enter", use_container_width=True):
-        if candidate == expected:
+        # Constant-time comparison to reduce timing side-channel leakage.
+        if hmac.compare_digest(candidate, expected):
             st.session_state.pilot_authed = True
             st.session_state.pilot_failed_attempts = 0
             st.session_state.pilot_lock_until = 0.0
