@@ -1447,6 +1447,15 @@ def render_sidebar(files_dict):
             st.session_state.admin_metrics_ok = False
             st.session_state.files = {}
             st.rerun()
+
+        # Auth diagnostics (safe): show gate/source state without exposing secrets.
+        with st.sidebar.expander("Auth Diagnostics", expanded=False):
+            has_pilot_password = bool(_safe_secret("PILOT_ACCESS_PASSWORD", os.getenv("PILOT_ACCESS_PASSWORD", "")).strip())
+            has_legacy_password = bool(_safe_secret("ACCESS_PASSWORD", os.getenv("ACCESS_PASSWORD", "")).strip())
+            source_key = "PILOT_ACCESS_PASSWORD" if has_pilot_password else ("ACCESS_PASSWORD" if has_legacy_password else "none")
+            st.caption(f"Pilot gate enabled: {'yes' if (_env_bool('PILOT_ACCESS_ENABLED', False) or has_pilot_password or has_legacy_password) else 'no'}")
+            st.caption(f"Password source key: {source_key}")
+            st.caption(f"Lockout seconds: {max(5, int(os.getenv('PILOT_LOCKOUT_SECONDS', '15')))}")
         st.sidebar.markdown("---")
 
     # ── Multi-file uploader ───────────────────────────────────────────────────
