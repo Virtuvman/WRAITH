@@ -1051,27 +1051,45 @@ def _build_metrics_context(files_dict, filtered_dict, active_names, status_filte
 
 
 def render_metrics_panel(files_dict, filtered_dict, active_names, status_filter):
+    phone_ui = is_phone_ui()
+    tablet_ui = is_tablet_ui()
+
     st.markdown('<div class="section-label">Admin Metrics — Usage & Ingest Statistics</div>', unsafe_allow_html=True)
 
     ctx = _build_metrics_context(files_dict, filtered_dict, active_names, status_filter)
     df_active = ctx["df_active"]
     per_file_df = ctx["per_file_df"]
 
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Loaded files", ctx["loaded_files"])
-    c2.metric("Active files", ctx["active_files"])
-    c3.metric("Rows ingested", f"{ctx['ingest_rows']:,}")
-    c4.metric("Rows parsed", f"{ctx['parsed_rows']:,}")
-    c5.metric("Parse success", f"{ctx['parse_success_pct']}%")
-
-    c6, c7, c8 = st.columns(3)
-    c6.metric("Conflict rows", f"{ctx['conflict_rows']:,}")
-    if not df_active.empty:
-        c7.metric("Active rows", f"{len(df_active):,}")
-        c8.metric("Expired %", f"{round((df_active['staleness_status'].eq('EXPIRED').mean()*100),1)}%")
+    if phone_ui:
+        p1, p2 = st.columns(2)
+        p1.metric("Loaded files", ctx["loaded_files"])
+        p2.metric("Active files", ctx["active_files"])
+        p3, p4 = st.columns(2)
+        p3.metric("Rows ingested", f"{ctx['ingest_rows']:,}")
+        p4.metric("Rows parsed", f"{ctx['parsed_rows']:,}")
+        p5, p6 = st.columns(2)
+        p5.metric("Parse success", f"{ctx['parse_success_pct']}%")
+        p6.metric("Conflict rows", f"{ctx['conflict_rows']:,}")
+        if not df_active.empty:
+            p7, p8 = st.columns(2)
+            p7.metric("Active rows", f"{len(df_active):,}")
+            p8.metric("Expired %", f"{round((df_active['staleness_status'].eq('EXPIRED').mean()*100),1)}%")
     else:
-        c7.metric("Active rows", "0")
-        c8.metric("Expired %", "0.0%")
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("Loaded files", ctx["loaded_files"])
+        c2.metric("Active files", ctx["active_files"])
+        c3.metric("Rows ingested", f"{ctx['ingest_rows']:,}")
+        c4.metric("Rows parsed", f"{ctx['parsed_rows']:,}")
+        c5.metric("Parse success", f"{ctx['parse_success_pct']}%")
+
+        c6, c7, c8 = st.columns(3)
+        c6.metric("Conflict rows", f"{ctx['conflict_rows']:,}")
+        if not df_active.empty:
+            c7.metric("Active rows", f"{len(df_active):,}")
+            c8.metric("Expired %", f"{round((df_active['staleness_status'].eq('EXPIRED').mean()*100),1)}%")
+        else:
+            c7.metric("Active rows", "0")
+            c8.metric("Expired %", "0.0%")
 
     st.markdown("---")
 
@@ -1123,17 +1141,20 @@ def render_metrics_panel(files_dict, filtered_dict, active_names, status_filter)
         else:
             trend_fig = None
 
-        left, right = st.columns(2)
+        left, right = st.columns(1) if phone_ui else st.columns(2)
         with left:
             st.plotly_chart(donut, use_container_width=True)
-        with right:
-            if trend_fig is not None:
-                st.plotly_chart(trend_fig, use_container_width=True)
-            else:
-                st.info("No parseable `last_seen` dates for monthly trend.")
+        if not phone_ui:
+            with right:
+                if trend_fig is not None:
+                    st.plotly_chart(trend_fig, use_container_width=True)
+                else:
+                    st.info("No parseable `last_seen` dates for monthly trend.")
+        elif trend_fig is not None:
+            st.plotly_chart(trend_fig, use_container_width=True)
 
         # Top entities + age distribution
-        c_top1, c_top2 = st.columns(2)
+        c_top1, c_top2 = st.columns(1) if phone_ui else st.columns(2)
 
         top_countries = df_active["country"].fillna("UNKNOWN").value_counts().head(10)
         fig_country = go.Figure(
@@ -1149,10 +1170,13 @@ def render_metrics_panel(files_dict, filtered_dict, active_names, status_filter)
 
         with c_top1:
             st.plotly_chart(fig_country, use_container_width=True)
-        with c_top2:
+        if not phone_ui:
+            with c_top2:
+                st.plotly_chart(fig_org, use_container_width=True)
+        else:
             st.plotly_chart(fig_org, use_container_width=True)
 
-        c_top3, c_top4 = st.columns(2)
+        c_top3, c_top4 = st.columns(1) if phone_ui else st.columns(2)
 
         top_ports = df_active["port"].astype(str).fillna("UNKNOWN").value_counts().head(10)
         fig_port = go.Figure(
@@ -1168,7 +1192,10 @@ def render_metrics_panel(files_dict, filtered_dict, active_names, status_filter)
 
         with c_top3:
             st.plotly_chart(fig_port, use_container_width=True)
-        with c_top4:
+        if not phone_ui:
+            with c_top4:
+                st.plotly_chart(fig_model, use_container_width=True)
+        else:
             st.plotly_chart(fig_model, use_container_width=True)
 
         fig_age = go.Figure(
@@ -1194,7 +1221,7 @@ def render_metrics_panel(files_dict, filtered_dict, active_names, status_filter)
         }
     ])
 
-    e1, e2, e3 = st.columns(3)
+    e1, e2, e3 = st.columns(1) if phone_ui else st.columns(3)
     with e1:
         st.download_button(
             "⬇ Metrics summary CSV",
@@ -1407,6 +1434,7 @@ def generate_bluf(files_dict, active_names, status_filter):
 
 def render_collection_schedule(files_dict, active_names, status_filter):
     """COA 1 panel: show per-poc_batch refresh schedule against 90/180/360 thresholds."""
+    phone_ui = is_phone_ui()
     frames = []
     for name in active_names:
         if name not in files_dict:
@@ -1469,7 +1497,15 @@ def render_collection_schedule(files_dict, active_names, status_filter):
         )
 
     sched_df = pd.DataFrame(rows).sort_values(by=["expired", "stale", "review", "rows"], ascending=False)
-    st.dataframe(sched_df, use_container_width=True, hide_index=True)
+    if phone_ui:
+        compact_cols = [
+            c for c in [
+                "poc_batch", "rows", "oldest_age_days", "to_90d", "to_180d", "to_360d", "expired"
+            ] if c in sched_df.columns
+        ]
+        st.dataframe(sched_df[compact_cols], use_container_width=True, hide_index=True)
+    else:
+        st.dataframe(sched_df, use_container_width=True, hide_index=True)
     st.download_button(
         "⬇ Collection Schedule CSV",
         data=sched_df.to_csv(index=False).encode("utf-8"),
@@ -2007,17 +2043,22 @@ def main():
 
     elif view == "Alerts & Export":
         st.markdown('<div class="section-label">Alerts & Export</div>', unsafe_allow_html=True)
+        phone_ui = is_phone_ui()
+        tablet_ui = is_tablet_ui()
 
         bluf_text = generate_bluf(filtered_dict, active_names, status_filter)
-        st.text_area("BLUF Summary", value=bluf_text, height=400)
+        st.text_area("BLUF Summary", value=bluf_text, height=300 if phone_ui else 400)
 
         st.markdown("---")
         st.markdown('<div class="section-label">Collection Schedule (by poc_batch)</div>', unsafe_allow_html=True)
         render_collection_schedule(filtered_dict, active_names, status_filter)
 
-        col1, col2, col3 = st.columns(3)
+        if phone_ui:
+            col1 = col2 = col3 = None
+        else:
+            col1, col2, col3 = st.columns(3)
 
-        with col1:
+        if phone_ui:
             st.download_button(
                 "⬇ BLUF Report (.txt)",
                 data=bluf_text,
@@ -2025,8 +2066,17 @@ def main():
                 mime="text/plain",
                 use_container_width=True,
             )
+        else:
+            with col1:
+                st.download_button(
+                    "⬇ BLUF Report (.txt)",
+                    data=bluf_text,
+                    file_name=f"wraith_bluf_{datetime.date.today().isoformat()}.txt",
+                    mime="text/plain",
+                    use_container_width=True,
+                )
 
-        with col2:
+        def _render_full_dataset_btn():
             all_frames = []
             for name in active_names:
                 if name not in filtered_dict:
@@ -2046,7 +2096,13 @@ def main():
                     use_container_width=True,
                 )
 
-        with col3:
+        if phone_ui:
+            _render_full_dataset_btn()
+        else:
+            with col2:
+                _render_full_dataset_btn()
+
+        def _render_conflicts_btn():
             all_conflicts = []
             for name, fd in files_dict.items():
                 for err in fd["errors"]:
@@ -2069,6 +2125,12 @@ def main():
                 )
             else:
                 st.button("No conflicts to export", disabled=True, use_container_width=True)
+
+        if phone_ui:
+            _render_conflicts_btn()
+        else:
+            with col3:
+                _render_conflicts_btn()
 
         st.markdown("---")
         st.markdown('<div class="section-label">Manual Email Send</div>', unsafe_allow_html=True)
