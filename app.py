@@ -316,6 +316,7 @@ html, body, .stApp, [data-testid="stAppViewContainer"] {
 .kpi-card.red    .kpi-num { color:#ef4444; }
 
 .file-table { width:100%; border-collapse:collapse; font-size:0.78rem; margin-top:0.4rem; }
+.table-scroll { width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
 .file-table th {
     text-align:left; padding:5px 10px; font-size:0.65rem;
     text-transform:uppercase; letter-spacing:0.07em;
@@ -872,6 +873,7 @@ def _render_file_legend(files_dict, active_names, show_ring_key=False):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def render_kpis(files_dict, active_names, status_filter):
+    phone_ui = is_phone_ui()
     total = current = review = stale = expired = 0
     file_rows = []
     region_values: set[str] = set()
@@ -901,15 +903,15 @@ def render_kpis(files_dict, active_names, status_filter):
     st.markdown(
         f'<div class="kpi-row">'
         f'<div class="kpi-card total"><div class="kpi-num">{total}</div>'
-        f'<div class="kpi-lbl">Total Cameras</div></div>'
+        f'<div class="kpi-lbl">{"Total" if phone_ui else "Total Cameras"}</div></div>'
         f'<div class="kpi-card green"><div class="kpi-num">{current}</div>'
-        f'<div class="kpi-lbl">Current &lt;90d</div></div>'
+        f'<div class="kpi-lbl">{"Current" if phone_ui else "Current &lt;90d"}</div></div>'
         f'<div class="kpi-card yellow"><div class="kpi-num">{review}</div>'
-        f'<div class="kpi-lbl">Review 90–180d</div></div>'
+        f'<div class="kpi-lbl">{"Review" if phone_ui else "Review 90–180d"}</div></div>'
         f'<div class="kpi-card orange"><div class="kpi-num">{stale}</div>'
-        f'<div class="kpi-lbl">Stale 180–360d</div></div>'
+        f'<div class="kpi-lbl">{"Stale" if phone_ui else "Stale 180–360d"}</div></div>'
         f'<div class="kpi-card red"><div class="kpi-num">{expired}</div>'
-        f'<div class="kpi-lbl">Expired &gt;360d</div></div>'
+        f'<div class="kpi-lbl">{"Expired" if phone_ui else "Expired &gt;360d"}</div></div>'
         f'<div class="kpi-card total"><div class="kpi-num">{region_count}</div>'
         f'<div class="kpi-lbl">Regions</div></div>'
         f'<div class="kpi-card total"><div class="kpi-num">{layer_count}</div>'
@@ -934,10 +936,10 @@ def render_kpis(files_dict, active_names, status_filter):
                 for name, color, t, c, r, s, e in file_rows
             )
             st.markdown(
-                f'<table class="file-table"><thead><tr>'
+                f'<div class="table-scroll"><table class="file-table"><thead><tr>'
                 f'<th>Region / File</th><th>Total</th>'
                 f'<th>Current</th><th>Review</th><th>Stale</th><th>Expired</th>'
-                f'</tr></thead><tbody>{rows_html}</tbody></table>',
+                f'</tr></thead><tbody>{rows_html}</tbody></table></div>',
                 unsafe_allow_html=True,
             )
 
@@ -1201,6 +1203,7 @@ def render_metrics_panel(files_dict, filtered_dict, active_names, status_filter)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def render_conflicts(files_dict):
+    phone_ui = is_phone_ui()
     any_errors = any(len(fd["errors"]) > 0 for fd in files_dict.values())
 
     if not any_errors:
@@ -1230,10 +1233,15 @@ def render_conflicts(files_dict):
             f'<div class="cc-row">'
             f'<b>Row {err["row_index"]}</b> · '
             f'Format attempted: <code>{err["format_detected"]}</code> · '
-            f'<span class="cc-reason">{err["reason"]}</span><br>'
-            f'<span style="color:#64748b;font-size:0.71rem">'
-            f'Raw: {" | ".join(f"{k}:{v}" for k,v in err["raw_values"].items()) or "N/A"}'
-            f'</span></div>'
+            f'<span class="cc-reason">{err["reason"]}</span>'
+            + (
+                ""
+                if phone_ui
+                else f'<br><span style="color:#64748b;font-size:0.71rem">'
+                     f'Raw: {" | ".join(f"{k}:{v}" for k,v in err["raw_values"].items()) or "N/A"}'
+                     f'</span>'
+            )
+            + '</div>'
             for err in errors
         )
 
@@ -1910,6 +1918,8 @@ def main():
 
     elif view == "Data Table":
         st.markdown('<div class="section-label">Data Table</div>', unsafe_allow_html=True)
+        phone_ui = is_phone_ui()
+        tablet_ui = is_tablet_ui()
 
         # Merge all active files with a source_file column
         all_frames = []
@@ -1924,11 +1934,22 @@ def main():
             st.info("No data matches current filters.")
         else:
             df_table = pd.concat(all_frames, ignore_index=True)
-            show_cols = [
-                "source_file", "ip", "location_label", "device_type",
-                "model", "last_seen", "age_months", "staleness_status",
-                "country", "port", "org",
-            ]
+            if phone_ui:
+                show_cols = [
+                    "source_file", "location_label", "staleness_status",
+                    "country", "last_seen",
+                ]
+            elif tablet_ui:
+                show_cols = [
+                    "source_file", "ip", "location_label", "model",
+                    "last_seen", "age_months", "staleness_status", "country",
+                ]
+            else:
+                show_cols = [
+                    "source_file", "ip", "location_label", "device_type",
+                    "model", "last_seen", "age_months", "staleness_status",
+                    "country", "port", "org",
+                ]
             available = [c for c in show_cols if c in df_table.columns]
 
             def style_status(val):
