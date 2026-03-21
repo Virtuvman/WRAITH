@@ -81,6 +81,23 @@ def _safe_secret(name: str, default: str = "") -> str:
         # Local runs often omit .streamlit/secrets.toml; gracefully fall back.
         return str(default)
 
+
+def get_ui_profile() -> str:
+    """Return one of: phone, tablet, desktop (default)."""
+    try:
+        raw = str(st.query_params.get("ui", "desktop")).strip().lower()
+    except Exception:
+        raw = "desktop"
+    return raw if raw in {"phone", "tablet", "desktop"} else "desktop"
+
+
+def is_phone_ui() -> bool:
+    return get_ui_profile() == "phone"
+
+
+def is_tablet_ui() -> bool:
+    return get_ui_profile() == "tablet"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CONSTANTS
 # ─────────────────────────────────────────────────────────────────────────────
@@ -253,6 +270,28 @@ html, body, [class*="css"] { font-family:'Inter',sans-serif; }
 @media (max-width: 760px) {
   .cw-header h1 { font-size:1.25rem; letter-spacing:0.08em; }
   .cw-header .cw-sub, .brand-subline { font-size:0.66rem; }
+}
+
+/* Global overflow and touch-target safety */
+html, body, .stApp, [data-testid="stAppViewContainer"] {
+  overflow-x: hidden;
+}
+[data-testid="stSidebar"] button,
+[data-testid="stSidebar"] [role="button"] {
+  min-height: 2.35rem;
+}
+
+/* Phone profile */
+@media (max-width: 768px) {
+  .kpi-card { min-width: 44%; padding: 0.65rem 0.7rem; }
+  .kpi-card .kpi-num { font-size: 1.35rem; }
+  .kpi-card .kpi-lbl { font-size: 0.56rem; }
+  .alert-banner { font-size: 0.76rem; padding: 0.55rem 0.75rem; }
+}
+
+/* Tablet profile */
+@media (min-width: 769px) and (max-width: 1100px) {
+  .kpi-card { min-width: 30%; }
 }
 
 .kpi-row { display:flex; gap:10px; margin-bottom:1rem; flex-wrap:wrap; }
@@ -1434,6 +1473,9 @@ def send_email_alert(subject, body):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def render_sidebar(files_dict):
+    phone_ui = is_phone_ui()
+    tablet_ui = is_tablet_ui()
+
     st.sidebar.markdown(
         '<p style="font-family:\'Share Tech Mono\',monospace;font-size:0.75rem;'
         'letter-spacing:0.12em;color:#475569;text-transform:uppercase;">'
@@ -1458,7 +1500,7 @@ def render_sidebar(files_dict):
             st.caption(f"Lockout seconds: {max(5, int(os.getenv('PILOT_LOCKOUT_SECONDS', '15')))}")
         st.sidebar.markdown("---")
 
-    # ── Multi-file uploader ───────────────────────────────────────────────────
+    # ── Upload ────────────────────────────────────────────────────────────────
     uploaded_files = st.sidebar.file_uploader(
         "Upload region CSV(s)",
         type=["csv"],
@@ -1472,10 +1514,45 @@ def render_sidebar(files_dict):
 
     st.sidebar.markdown("---")
 
+    # ── Primary navigation (View) ─────────────────────────────────────────────
+    st.sidebar.markdown('<div class="section-label">View</div>', unsafe_allow_html=True)
+    view_options = ["Globe", "Flat Map", "Heatmap", "Data Table", "Conflicts", "Alerts & Export"]
+    if st.session_state.admin_metrics_ok:
+        view_options.append("Metrics")
+    view = st.sidebar.radio(
+        "Panel",
+        options=view_options,
+        label_visibility="collapsed",
+    )
+
+    st.sidebar.markdown("---")
+
+    # ── Filters ───────────────────────────────────────────────────────────────
+    st.sidebar.markdown('<div class="section-label">Filters</div>', unsafe_allow_html=True)
+
+    status_filter = st.sidebar.multiselect(
+        "Staleness",
+        options=STALENESS_ORDER,
+        default=STALENESS_ORDER,
+    )
+
+    country_filter = []
+    if files_dict:
+        all_countries = sorted(set(
+            c for fd in files_dict.values()
+            for c in fd["df"]["country"].dropna().unique()
+        ))
+        if all_countries:
+            country_filter = st.sidebar.multiselect(
+                "Country", options=all_countries, default=all_countries,
+            )
+
+    st.sidebar.markdown("---")
+
     # ── Layer controls — one row per loaded file ──────────────────────────────
     active_names = []
     if files_dict:
-        with st.sidebar.expander("Layers", expanded=True):
+        with st.sidebar.expander("Layers", expanded=not phone_ui):
             for name, fdata in files_dict.items():
                 visible = st.checkbox(
                     f"{name.replace('.csv','')}",
@@ -1503,118 +1580,80 @@ def render_sidebar(files_dict):
 
     st.sidebar.markdown("---")
 
-    # ── Admin access (metrics) ────────────────────────────────────────────────
-    st.sidebar.markdown('<div class="section-label">Admin Access</div>', unsafe_allow_html=True)
-    admin_phrase = os.getenv("ADMIN_METRICS_PASSPHRASE", "wraith")
-    admin_input = st.sidebar.text_input("Metrics passphrase", type="password", key="admin_metrics_phrase_input")
-    a1, a2 = st.sidebar.columns(2)
-    with a1:
-        if st.button("Unlock", use_container_width=True):
-            if admin_input and admin_input == admin_phrase:
-                st.session_state.admin_metrics_ok = True
-                st.sidebar.success("Admin metrics unlocked")
-            else:
+    # ── Advanced controls (collapsed on phone) ───────────────────────────────
+    advanced_expanded = not phone_ui and not tablet_ui
+    with st.sidebar.expander("Advanced Controls", expanded=advanced_expanded):
+        # Map options
+        st.markdown('<div class="section-label">Map Options</div>', unsafe_allow_html=True)
+
+        # Email alerts
+        st.markdown('<div class="section-label">Email Alerts</div>', unsafe_allow_html=True)
+        email_enabled = st.toggle(
+            "Enable email alerts", value=False,
+            help="Set ALERT_EMAIL_FROM / _PASSWORD / _TO in .env",
+        )
+        if email_enabled:
+            if st.button("Send test email"):
+                ok, msg = send_email_alert("WRAITH — Test Alert", "Test alert from WRAITH.")
+                st.success("Sent.") if ok else st.error(msg)
+
+        st.markdown("---")
+
+        # Admin access (metrics)
+        st.markdown('<div class="section-label">Admin Access</div>', unsafe_allow_html=True)
+        admin_phrase = os.getenv("ADMIN_METRICS_PASSPHRASE", "wraith")
+        admin_input = st.text_input("Metrics passphrase", type="password", key="admin_metrics_phrase_input")
+        a1, a2 = st.columns(2)
+        with a1:
+            if st.button("Unlock", use_container_width=True):
+                if admin_input and admin_input == admin_phrase:
+                    st.session_state.admin_metrics_ok = True
+                    st.success("Admin metrics unlocked")
+                else:
+                    st.session_state.admin_metrics_ok = False
+                    st.error("Invalid passphrase")
+        with a2:
+            if st.button("Lock", use_container_width=True):
                 st.session_state.admin_metrics_ok = False
-                st.sidebar.error("Invalid passphrase")
-    with a2:
-        if st.button("Lock", use_container_width=True):
-            st.session_state.admin_metrics_ok = False
 
-    st.sidebar.markdown("---")
-
-    # ── Panel selector ────────────────────────────────────────────────────────
-    st.sidebar.markdown('<div class="section-label">View</div>', unsafe_allow_html=True)
-    view_options = ["Globe", "Flat Map", "Heatmap", "Data Table", "Conflicts", "Alerts & Export"]
-    if st.session_state.admin_metrics_ok:
-        view_options.append("Metrics")
-    view = st.sidebar.radio(
-        "Panel",
-        options=view_options,
-        label_visibility="collapsed",
-    )
-
-    # Map options
     auto_rotate = False
     heat_tile_style = "Dark (CartoDB)"
     heat_use_cluster = True
     heat_marker_radius = 6
     heat_radius = 20
-    heat_show_minimap = True
+    heat_show_minimap = not phone_ui
 
     if view == "Globe":
-        st.sidebar.markdown(
-            '<div class="section-label" style="margin-top:0.4rem">Map Options</div>',
-            unsafe_allow_html=True,
-        )
-        auto_rotate = st.sidebar.toggle("Auto-rotate", value=False)
+        auto_rotate = st.toggle("Auto-rotate", value=False, disabled=phone_ui)
     elif view == "Heatmap":
-        st.sidebar.markdown(
-            '<div class="section-label" style="margin-top:0.4rem">Map Options</div>',
-            unsafe_allow_html=True,
-        )
-        heat_tile_style = st.sidebar.selectbox(
+        heat_tile_style = st.selectbox(
             "Basemap",
             options=list(HEATMAP_TILES.keys()),
             index=0,
             help="Switch to a more detailed base map (street, terrain, satellite, etc.).",
         )
-        heat_use_cluster = st.sidebar.toggle(
+        heat_use_cluster = st.toggle(
             "Cluster markers",
-            value=True,
+            value=not phone_ui,
             help="Group nearby cameras at low zoom for denser regions.",
         )
-        heat_show_minimap = st.sidebar.toggle(
+        heat_show_minimap = st.toggle(
             "Show minimap",
-            value=True,
+            value=not phone_ui,
             help="Display a small overview map for quicker navigation.",
         )
-        heat_marker_radius = st.sidebar.slider(
+        heat_marker_radius = st.slider(
             "Marker size",
             min_value=4,
             max_value=10,
-            value=6,
+            value=5 if phone_ui else 6,
         )
-        heat_radius = st.sidebar.slider(
+        heat_radius = st.slider(
             "Heat radius",
             min_value=10,
             max_value=35,
-            value=20,
+            value=16 if phone_ui else 20,
         )
-
-    st.sidebar.markdown("---")
-
-    # ── Filters ───────────────────────────────────────────────────────────────
-    st.sidebar.markdown('<div class="section-label">Filters</div>', unsafe_allow_html=True)
-
-    status_filter = st.sidebar.multiselect(
-        "Staleness",
-        options=STALENESS_ORDER,
-        default=STALENESS_ORDER,
-    )
-
-    country_filter = []
-    if files_dict:
-        all_countries = sorted(set(
-            c for fd in files_dict.values()
-            for c in fd["df"]["country"].dropna().unique()
-        ))
-        if all_countries:
-            country_filter = st.sidebar.multiselect(
-                "Country", options=all_countries, default=all_countries,
-            )
-
-    st.sidebar.markdown("---")
-
-    # ── Email alerts ──────────────────────────────────────────────────────────
-    st.sidebar.markdown('<div class="section-label">Email Alerts</div>', unsafe_allow_html=True)
-    email_enabled = st.sidebar.toggle(
-        "Enable email alerts", value=False,
-        help="Set ALERT_EMAIL_FROM / _PASSWORD / _TO in .env",
-    )
-    if email_enabled:
-        if st.sidebar.button("Send test email"):
-            ok, msg = send_email_alert("WRAITH — Test Alert", "Test alert from WRAITH.")
-            st.sidebar.success("Sent.") if ok else st.sidebar.error(msg)
 
     return (
         uploaded_files, view, auto_rotate,
@@ -1632,6 +1671,7 @@ def main():
     init_session()
     apply_splash_background()
     require_pilot_access()
+    ui_profile = get_ui_profile()
 
     # ── Header ────────────────────────────────────────────────────────────────
     render_text_header = True
@@ -1661,6 +1701,8 @@ def main():
             '<div class="brand-subline">Wide-area Reconnaissance & Asset Intelligence Tracking Hub</div>',
             unsafe_allow_html=True,
         )
+
+    st.caption(f"UI profile: {ui_profile} (set with ?ui=phone | ?ui=tablet | ?ui=desktop)")
 
     files_dict = st.session_state.files
 
