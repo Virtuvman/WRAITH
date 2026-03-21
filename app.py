@@ -476,6 +476,9 @@ def compute_staleness(df):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def render_globe(files_dict, active_names, status_filter, auto_rotate=False):
+    phone_ui = is_phone_ui()
+    tablet_ui = is_tablet_ui()
+
     frames = []
     for name in active_names:
         if name not in files_dict:
@@ -550,13 +553,18 @@ def render_globe(files_dict, active_names, status_filter, auto_rotate=False):
         showcoastlines=True, coastlinecolor="#334155",
         showframe=False,     bgcolor="rgba(0,0,0,0)",
     )
+    globe_height = 430 if phone_ui else (500 if tablet_ui else 560)
+
     fig.update_layout(
-        height=560, margin=dict(l=0, r=0, t=0, b=0),
+        height=globe_height, margin=dict(l=0, r=0, t=0, b=0),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         legend=dict(
             # Keep legend away from Plotly modebar controls (top-right).
-            orientation="v", x=1.01, y=0.82, xanchor="left",
+            orientation="h" if phone_ui else "v",
+            x=0.5 if phone_ui else 1.01,
+            y=0.02 if phone_ui else 0.82,
+            xanchor="center" if phone_ui else "left",
             font=dict(size=10, color="#94a3b8"),
             bgcolor="rgba(15,23,42,0.75)",
             bordercolor="rgba(255,255,255,0.1)", borderwidth=1,
@@ -564,6 +572,9 @@ def render_globe(files_dict, active_names, status_filter, auto_rotate=False):
         ),
         dragmode="orbit",
     )
+
+    if phone_ui:
+        auto_rotate = False
 
     if auto_rotate:
         rot_frames = [
@@ -604,6 +615,9 @@ def render_globe(files_dict, active_names, status_filter, auto_rotate=False):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def render_flat_map(files_dict, active_names, status_filter):
+    phone_ui = is_phone_ui()
+    tablet_ui = is_tablet_ui()
+
     frames = []
     for name in active_names:
         if name not in files_dict:
@@ -678,13 +692,18 @@ def render_flat_map(files_dict, active_names, status_filter):
         lataxis_range=[max(-90,  all_lats.min()-8), min(90,   all_lats.max()+8)],
         lonaxis_range=[max(-180, all_lons.min()-12), min(180, all_lons.max()+12)],
     )
+    flat_height = 420 if phone_ui else (500 if tablet_ui else 540)
+
     fig.update_layout(
-        height=540, margin=dict(l=0, r=0, t=0, b=0),
+        height=flat_height, margin=dict(l=0, r=0, t=0, b=0),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         legend=dict(
             # Keep legend away from Plotly modebar controls (top-right).
-            orientation="v", x=1.01, y=0.82, xanchor="left",
+            orientation="h" if phone_ui else "v",
+            x=0.5 if phone_ui else 1.01,
+            y=0.02 if phone_ui else 0.82,
+            xanchor="center" if phone_ui else "left",
             font=dict(size=10, color="#94a3b8"),
             bgcolor="rgba(15,23,42,0.75)",
             bordercolor="rgba(255,255,255,0.1)", borderwidth=1,
@@ -717,6 +736,9 @@ def render_heatmap(
     heat_radius=20,
     show_minimap=True,
 ):
+    phone_ui = is_phone_ui()
+    tablet_ui = is_tablet_ui()
+
     if not FOLIUM_AVAILABLE:
         st.warning("Run: `pip install folium streamlit-folium`")
         return
@@ -832,9 +854,10 @@ def render_heatmap(
     ).add_to(hfg)
     hfg.add_to(m)
 
-    folium.LayerControl(collapsed=False, position="topright").add_to(m)
+    folium.LayerControl(collapsed=phone_ui, position="topright").add_to(m)
 
-    st_folium(m, use_container_width=True, height=560, returned_objects=[])
+    heat_height = 460 if phone_ui else (520 if tablet_ui else 560)
+    st_folium(m, use_container_width=True, height=heat_height, returned_objects=[])
 
     # Legend row below map
     _render_file_legend(files_dict, active_names, show_ring_key=True)
@@ -845,8 +868,11 @@ def render_heatmap(
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _render_file_legend(files_dict, active_names, show_ring_key=False):
-    swatches = " &nbsp; ".join(
-        f'<span style="display:inline-flex;align-items:center;gap:5px;font-size:0.75rem;color:#94a3b8">'
+    phone_ui = is_phone_ui()
+    swatches = "".join(
+        f'<span style="display:inline-flex;align-items:center;gap:5px;'
+        f'font-size:{"0.68rem" if phone_ui else "0.75rem"};color:#94a3b8;'
+        f'margin:2px 8px 2px 0">'
         f'<span style="width:10px;height:10px;border-radius:50%;'
         f'background:{files_dict[n]["color"]};display:inline-block;flex-shrink:0"></span>'
         f'{n.replace(".csv","")}</span>'
@@ -863,7 +889,7 @@ def _render_file_legend(files_dict, active_names, show_ring_key=False):
             '<span style="color:#ef4444">●</span> Expired</span>'
         )
     st.markdown(
-        f'<div style="margin-top:0.5rem;padding:0.3rem 0">{swatches}{ring_key}</div>',
+        f'<div style="margin-top:0.5rem;padding:0.3rem 0;display:flex;flex-wrap:wrap;align-items:center">{swatches}{ring_key}</div>',
         unsafe_allow_html=True,
     )
 
