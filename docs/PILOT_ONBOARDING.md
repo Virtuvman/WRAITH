@@ -1,4 +1,4 @@
-## WRAITH Peer Pilot Onboarding (Non-GitHub Users)
+use ## WRAITH Peer Pilot Onboarding (Non-GitHub Users)
 
 This guide is for trusted peers participating in the private WRAITH MVP trial.
 
