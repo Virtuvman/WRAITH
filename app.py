@@ -167,6 +167,17 @@ except ValueError:
     SPLASH_OVERLAY_ALPHA = 0.35
 SPLASH_OVERLAY_ALPHA = min(0.9, max(0.0, SPLASH_OVERLAY_ALPHA))
 AUTO_PRELOAD_TEST_FIXTURES = _env_bool("AUTO_PRELOAD_TEST_FIXTURES", True)
+REQUIRE_BUNDLED_FIXTURES = _env_bool("REQUIRE_BUNDLED_FIXTURES", True)
+
+REQUIRED_BUNDLED_FIXTURE_FILENAMES = [
+    "WRAITH Test Data.csv",
+    "WRAITH Test Data_1.csv",
+    "WRAITH Test Data_2.csv",
+    "WRAITH Test Data_3.csv",
+    "WRAITH Test Data_4.csv",
+    "WRAITH Test Data_5.csv",
+    "WRAITH Test Data_6.csv",
+]
 
 
 def discover_fixture_files() -> list[Path]:
@@ -194,6 +205,13 @@ def discover_fixture_files() -> list[Path]:
     for p in files:
         dedup.setdefault(p.name, p)
     return list(dedup.values())
+
+
+def missing_required_fixtures(fixtures: list[Path] | None = None) -> list[str]:
+    """Return required fixture filenames that are currently missing."""
+    fixture_list = fixtures if fixtures is not None else discover_fixture_files()
+    present_names = {p.name for p in fixture_list}
+    return [name for name in REQUIRED_BUNDLED_FIXTURE_FILENAMES if name not in present_names]
 
 
 def _splash_data_uri(path: Path) -> str | None:
@@ -1621,6 +1639,7 @@ def render_sidebar(files_dict):
     fixture_paths = []
     fixture_candidates = discover_fixture_files()
     fixture_map = {p.name: p for p in fixture_candidates}
+    required_missing = missing_required_fixtures(fixture_candidates)
 
     with st.sidebar.expander("Bundled Test Data", expanded=False):
         st.toggle(
@@ -1628,6 +1647,13 @@ def render_sidebar(files_dict):
             key="sample_data_autoload",
             help="When enabled, bundled fixture CSVs auto-load on empty sessions.",
         )
+
+        if REQUIRE_BUNDLED_FIXTURES:
+            if required_missing:
+                st.error(f"Missing required fixtures ({len(required_missing)}/{len(REQUIRED_BUNDLED_FIXTURE_FILENAMES)}).")
+                st.caption("Required baseline: " + ", ".join(REQUIRED_BUNDLED_FIXTURE_FILENAMES))
+            else:
+                st.success("Required fixture baseline present.")
 
         if not fixture_map:
             st.caption("No bundled CSV fixtures found in app directory.")
@@ -1830,6 +1856,7 @@ def render_sidebar(files_dict):
         status_filter, country_filter, email_enabled, active_names,
         heat_tile_style, heat_use_cluster, heat_marker_radius, heat_radius, heat_show_minimap,
         fixture_paths,
+        required_missing,
         bool(st.session_state.get("sample_data_autoload", AUTO_PRELOAD_TEST_FIXTURES)),
         st.session_state.admin_metrics_ok,
     )
@@ -1883,8 +1910,19 @@ def main():
      status_filter, country_filter, email_enabled, active_names,
      heat_tile_style, heat_use_cluster, heat_marker_radius, heat_radius, heat_show_minimap,
      fixture_paths,
+     required_missing,
      sample_data_autoload,
      admin_metrics_ok) = render_sidebar(files_dict)
+
+    if REQUIRE_BUNDLED_FIXTURES and required_missing:
+        st.error(
+            "Bundled Test Data is required for this deployment, but required fixtures are missing: "
+            + ", ".join(required_missing)
+        )
+        st.info(
+            "Add required CSVs to the app directory (same folder as app.py) or `data/fixtures/`, then rerun."
+        )
+        st.stop()
 
     # Build a unified list of incoming files from uploader + local sample buttons.
     incoming_files = list(uploaded_files) if uploaded_files else []
