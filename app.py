@@ -32,6 +32,8 @@ import time
 import hmac
 import smtplib
 import logging
+import io
+import zipfile
 from email.mime.text import MIMEText
 
 # pandas may trigger Pylance's `reportMissingModuleSource` in some environments
@@ -52,9 +54,12 @@ try:
 except ImportError:
     FOLIUM_AVAILABLE = False
 
-from modules.ingestion import load_csv
-from modules.coord_normalizer import describe_detection
-from modules.staleness import (
+# NOTE: When `app.py` is opened from a different VS Code workspace root,
+# Pylance may not include this project directory on its analysis path.
+# Runtime import is valid when running from this folder (e.g. `streamlit run app.py`).
+from modules.ingestion import load_csv  # pyright: ignore[reportMissingImports]
+from modules.coord_normalizer import describe_detection  # pyright: ignore[reportMissingImports]
+from modules.staleness import (  # pyright: ignore[reportMissingImports]
     STALENESS_ORDER,
     STALENESS_RING,
     STATUS_COLORS,
@@ -161,6 +166,34 @@ try:
 except ValueError:
     SPLASH_OVERLAY_ALPHA = 0.35
 SPLASH_OVERLAY_ALPHA = min(0.9, max(0.0, SPLASH_OVERLAY_ALPHA))
+AUTO_PRELOAD_TEST_FIXTURES = _env_bool("AUTO_PRELOAD_TEST_FIXTURES", True)
+
+
+def discover_fixture_files() -> list[Path]:
+    """Discover bundled test fixture CSV files for optional preload/download UX."""
+    files = []
+
+    # Resolve against app.py directory first (robust when streamlit is launched
+    # from a different working directory/workspace root).
+    app_dir = Path(__file__).resolve().parent
+    files.extend(sorted(app_dir.glob("WRAITH Test Data*.csv")))
+    app_fixture_dir = app_dir / "data" / "fixtures"
+    if app_fixture_dir.exists():
+        files.extend(sorted(app_fixture_dir.glob("*.csv")))
+
+    # Backward-compatible fallback: also check current process working directory.
+    cwd = Path(".").resolve()
+    if cwd != app_dir:
+        files.extend(sorted(cwd.glob("WRAITH Test Data*.csv")))
+        cwd_fixture_dir = cwd / "data" / "fixtures"
+        if cwd_fixture_dir.exists():
+            files.extend(sorted(cwd_fixture_dir.glob("*.csv")))
+
+    # De-duplicate by filename while preserving first-seen order.
+    dedup: dict[str, Path] = {}
+    for p in files:
+        dedup.setdefault(p.name, p)
+    return list(dedup.values())
 
 
 def _splash_data_uri(path: Path) -> str | None:
@@ -392,6 +425,8 @@ def init_session():
         st.session_state.email_sent = False
     if "admin_metrics_ok" not in st.session_state:
         st.session_state.admin_metrics_ok = False
+    if "sample_data_autoload" not in st.session_state:
+        st.session_state.sample_data_autoload = AUTO_PRELOAD_TEST_FIXTURES
 
 
 def require_pilot_access() -> None:
@@ -1582,6 +1617,71 @@ def render_sidebar(files_dict):
         ),
     )
 
+    # ── Bundled test fixtures (for repeatable multi-device ingest) ───────────
+    fixture_paths = []
+    fixture_candidates = discover_fixture_files()
+    fixture_map = {p.name: p for p in fixture_candidates}
+
+    with st.sidebar.expander("Bundled Test Data", expanded=False):
+        st.toggle(
+            "Auto-load sample data",
+            key="sample_data_autoload",
+            help="When enabled, bundled fixture CSVs auto-load on empty sessions.",
+        )
+
+        if not fixture_map:
+            st.caption("No bundled CSV fixtures found in app directory.")
+        else:
+            st.caption(f"Detected {len(fixture_map)} local fixture CSV file(s).")
+
+            selected_fixtures = st.multiselect(
+                "Select fixture CSV(s) to load",
+                options=list(fixture_map.keys()),
+                default=[],
+                key="fixture_select_names",
+            )
+
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("Load selected", use_container_width=True):
+                    st.session_state.fixture_load_queue = [
+                        str(fixture_map[name]) for name in selected_fixtures if name in fixture_map
+                    ]
+                    st.rerun()
+            with c2:
+                if st.button("Clear", use_container_width=True):
+                    st.session_state.fixture_load_queue = []
+
+            # Download all selected as ZIP
+            if selected_fixtures:
+                zip_buffer = io.BytesIO()
+                with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+                    for name in selected_fixtures:
+                        p = fixture_map.get(name)
+                        if p and p.exists():
+                            zf.writestr(name, p.read_bytes())
+                zip_buffer.seek(0)
+                st.download_button(
+                    "⬇ Download selected (.zip)",
+                    data=zip_buffer.getvalue(),
+                    file_name=f"wraith_test_fixtures_{datetime.date.today().isoformat()}.zip",
+                    mime="application/zip",
+                    use_container_width=True,
+                )
+
+            # Per-file download buttons
+            for name, p in fixture_map.items():
+                st.download_button(
+                    f"⬇ {name}",
+                    data=p.read_bytes(),
+                    file_name=name,
+                    mime="text/csv",
+                    key=f"dl_fixture_{name}",
+                    use_container_width=True,
+                )
+
+    fixture_paths = st.session_state.pop("fixture_load_queue", []) if "fixture_load_queue" in st.session_state else []
+
     st.sidebar.markdown("---")
 
     # ── Primary navigation (View) ─────────────────────────────────────────────
@@ -1729,6 +1829,8 @@ def render_sidebar(files_dict):
         uploaded_files, view, auto_rotate,
         status_filter, country_filter, email_enabled, active_names,
         heat_tile_style, heat_use_cluster, heat_marker_radius, heat_radius, heat_show_minimap,
+        fixture_paths,
+        bool(st.session_state.get("sample_data_autoload", AUTO_PRELOAD_TEST_FIXTURES)),
         st.session_state.admin_metrics_ok,
     )
 
@@ -1780,10 +1882,21 @@ def main():
     (uploaded_files, view, auto_rotate,
      status_filter, country_filter, email_enabled, active_names,
      heat_tile_style, heat_use_cluster, heat_marker_radius, heat_radius, heat_show_minimap,
+     fixture_paths,
+     sample_data_autoload,
      admin_metrics_ok) = render_sidebar(files_dict)
 
     # Build a unified list of incoming files from uploader + local sample buttons.
     incoming_files = list(uploaded_files) if uploaded_files else []
+    if fixture_paths:
+        incoming_files.extend(fixture_paths)
+
+    # Optional POC convenience: auto-preload bundled fixtures when session starts empty.
+    if sample_data_autoload and not files_dict and not incoming_files:
+        auto_fixture_paths = [str(p) for p in discover_fixture_files()]
+        if auto_fixture_paths:
+            incoming_files.extend(auto_fixture_paths)
+            st.info(f"Auto-loading {len(auto_fixture_paths)} bundled test fixture file(s).")
 
     # ── Ingest newly uploaded files ───────────────────────────────────────────
     if incoming_files:
