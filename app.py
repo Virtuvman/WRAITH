@@ -32,6 +32,8 @@ import time
 import hmac
 import smtplib
 import logging
+import io
+import zipfile
 from email.mime.text import MIMEText
 
 # pandas may trigger Pylance's `reportMissingModuleSource` in some environments
@@ -52,9 +54,12 @@ try:
 except ImportError:
     FOLIUM_AVAILABLE = False
 
-from modules.ingestion import load_csv
-from modules.coord_normalizer import describe_detection
-from modules.staleness import (
+# NOTE: When `app.py` is opened from a different VS Code workspace root,
+# Pylance may not include this project directory on its analysis path.
+# Runtime import is valid when running from this folder (e.g. `streamlit run app.py`).
+from modules.ingestion import load_csv  # pyright: ignore[reportMissingImports]
+from modules.coord_normalizer import describe_detection  # pyright: ignore[reportMissingImports]
+from modules.staleness import (  # pyright: ignore[reportMissingImports]
     STALENESS_ORDER,
     STALENESS_RING,
     STATUS_COLORS,
@@ -80,6 +85,23 @@ def _safe_secret(name: str, default: str = "") -> str:
     except Exception:
         # Local runs often omit .streamlit/secrets.toml; gracefully fall back.
         return str(default)
+
+
+def get_ui_profile() -> str:
+    """Return one of: phone, tablet, desktop (default)."""
+    try:
+        raw = str(st.query_params.get("ui", "desktop")).strip().lower()
+    except Exception:
+        raw = "desktop"
+    return raw if raw in {"phone", "tablet", "desktop"} else "desktop"
+
+
+def is_phone_ui() -> bool:
+    return get_ui_profile() == "phone"
+
+
+def is_tablet_ui() -> bool:
+    return get_ui_profile() == "tablet"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONSTANTS
@@ -144,6 +166,52 @@ try:
 except ValueError:
     SPLASH_OVERLAY_ALPHA = 0.35
 SPLASH_OVERLAY_ALPHA = min(0.9, max(0.0, SPLASH_OVERLAY_ALPHA))
+AUTO_PRELOAD_TEST_FIXTURES = _env_bool("AUTO_PRELOAD_TEST_FIXTURES", True)
+REQUIRE_BUNDLED_FIXTURES = _env_bool("REQUIRE_BUNDLED_FIXTURES", True)
+
+REQUIRED_BUNDLED_FIXTURE_FILENAMES = [
+    "WRAITH Test Data.csv",
+    "WRAITH Test Data_1.csv",
+    "WRAITH Test Data_2.csv",
+    "WRAITH Test Data_3.csv",
+    "WRAITH Test Data_4.csv",
+    "WRAITH Test Data_5.csv",
+    "WRAITH Test Data_6.csv",
+]
+
+
+def discover_fixture_files() -> list[Path]:
+    """Discover bundled test fixture CSV files for optional preload/download UX."""
+    files = []
+
+    # Resolve against app.py directory first (robust when streamlit is launched
+    # from a different working directory/workspace root).
+    app_dir = Path(__file__).resolve().parent
+    files.extend(sorted(app_dir.glob("WRAITH Test Data*.csv")))
+    app_fixture_dir = app_dir / "data" / "fixtures"
+    if app_fixture_dir.exists():
+        files.extend(sorted(app_fixture_dir.glob("*.csv")))
+
+    # Backward-compatible fallback: also check current process working directory.
+    cwd = Path(".").resolve()
+    if cwd != app_dir:
+        files.extend(sorted(cwd.glob("WRAITH Test Data*.csv")))
+        cwd_fixture_dir = cwd / "data" / "fixtures"
+        if cwd_fixture_dir.exists():
+            files.extend(sorted(cwd_fixture_dir.glob("*.csv")))
+
+    # De-duplicate by filename while preserving first-seen order.
+    dedup: dict[str, Path] = {}
+    for p in files:
+        dedup.setdefault(p.name, p)
+    return list(dedup.values())
+
+
+def missing_required_fixtures(fixtures: list[Path] | None = None) -> list[str]:
+    """Return required fixture filenames that are currently missing."""
+    fixture_list = fixtures if fixtures is not None else discover_fixture_files()
+    present_names = {p.name for p in fixture_list}
+    return [name for name in REQUIRED_BUNDLED_FIXTURE_FILENAMES if name not in present_names]
 
 
 def _splash_data_uri(path: Path) -> str | None:
@@ -255,6 +323,28 @@ html, body, [class*="css"] { font-family:'Inter',sans-serif; }
   .cw-header .cw-sub, .brand-subline { font-size:0.66rem; }
 }
 
+/* Global overflow and touch-target safety */
+html, body, .stApp, [data-testid="stAppViewContainer"] {
+  overflow-x: hidden;
+}
+[data-testid="stSidebar"] button,
+[data-testid="stSidebar"] [role="button"] {
+  min-height: 2.35rem;
+}
+
+/* Phone profile */
+@media (max-width: 768px) {
+  .kpi-card { min-width: 44%; padding: 0.65rem 0.7rem; }
+  .kpi-card .kpi-num { font-size: 1.35rem; }
+  .kpi-card .kpi-lbl { font-size: 0.56rem; }
+  .alert-banner { font-size: 0.76rem; padding: 0.55rem 0.75rem; }
+}
+
+/* Tablet profile */
+@media (min-width: 769px) and (max-width: 1100px) {
+  .kpi-card { min-width: 30%; }
+}
+
 .kpi-row { display:flex; gap:10px; margin-bottom:1rem; flex-wrap:wrap; }
 .kpi-card {
     flex:1; min-width:88px;
@@ -277,6 +367,7 @@ html, body, [class*="css"] { font-family:'Inter',sans-serif; }
 .kpi-card.red    .kpi-num { color:#ef4444; }
 
 .file-table { width:100%; border-collapse:collapse; font-size:0.78rem; margin-top:0.4rem; }
+.table-scroll { width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
 .file-table th {
     text-align:left; padding:5px 10px; font-size:0.65rem;
     text-transform:uppercase; letter-spacing:0.07em;
@@ -352,6 +443,8 @@ def init_session():
         st.session_state.email_sent = False
     if "admin_metrics_ok" not in st.session_state:
         st.session_state.admin_metrics_ok = False
+    if "sample_data_autoload" not in st.session_state:
+        st.session_state.sample_data_autoload = AUTO_PRELOAD_TEST_FIXTURES
 
 
 def require_pilot_access() -> None:
@@ -436,6 +529,9 @@ def compute_staleness(df):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def render_globe(files_dict, active_names, status_filter, auto_rotate=False):
+    phone_ui = is_phone_ui()
+    tablet_ui = is_tablet_ui()
+
     frames = []
     for name in active_names:
         if name not in files_dict:
@@ -510,13 +606,18 @@ def render_globe(files_dict, active_names, status_filter, auto_rotate=False):
         showcoastlines=True, coastlinecolor="#334155",
         showframe=False,     bgcolor="rgba(0,0,0,0)",
     )
+    globe_height = 430 if phone_ui else (500 if tablet_ui else 560)
+
     fig.update_layout(
-        height=560, margin=dict(l=0, r=0, t=0, b=0),
+        height=globe_height, margin=dict(l=0, r=0, t=0, b=0),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         legend=dict(
             # Keep legend away from Plotly modebar controls (top-right).
-            orientation="v", x=1.01, y=0.82, xanchor="left",
+            orientation="h" if phone_ui else "v",
+            x=0.5 if phone_ui else 1.01,
+            y=0.02 if phone_ui else 0.82,
+            xanchor="center" if phone_ui else "left",
             font=dict(size=10, color="#94a3b8"),
             bgcolor="rgba(15,23,42,0.75)",
             bordercolor="rgba(255,255,255,0.1)", borderwidth=1,
@@ -524,6 +625,9 @@ def render_globe(files_dict, active_names, status_filter, auto_rotate=False):
         ),
         dragmode="orbit",
     )
+
+    if phone_ui:
+        auto_rotate = False
 
     if auto_rotate:
         rot_frames = [
@@ -564,6 +668,9 @@ def render_globe(files_dict, active_names, status_filter, auto_rotate=False):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def render_flat_map(files_dict, active_names, status_filter):
+    phone_ui = is_phone_ui()
+    tablet_ui = is_tablet_ui()
+
     frames = []
     for name in active_names:
         if name not in files_dict:
@@ -638,13 +745,18 @@ def render_flat_map(files_dict, active_names, status_filter):
         lataxis_range=[max(-90,  all_lats.min()-8), min(90,   all_lats.max()+8)],
         lonaxis_range=[max(-180, all_lons.min()-12), min(180, all_lons.max()+12)],
     )
+    flat_height = 420 if phone_ui else (500 if tablet_ui else 540)
+
     fig.update_layout(
-        height=540, margin=dict(l=0, r=0, t=0, b=0),
+        height=flat_height, margin=dict(l=0, r=0, t=0, b=0),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         legend=dict(
             # Keep legend away from Plotly modebar controls (top-right).
-            orientation="v", x=1.01, y=0.82, xanchor="left",
+            orientation="h" if phone_ui else "v",
+            x=0.5 if phone_ui else 1.01,
+            y=0.02 if phone_ui else 0.82,
+            xanchor="center" if phone_ui else "left",
             font=dict(size=10, color="#94a3b8"),
             bgcolor="rgba(15,23,42,0.75)",
             bordercolor="rgba(255,255,255,0.1)", borderwidth=1,
@@ -677,6 +789,9 @@ def render_heatmap(
     heat_radius=20,
     show_minimap=True,
 ):
+    phone_ui = is_phone_ui()
+    tablet_ui = is_tablet_ui()
+
     if not FOLIUM_AVAILABLE:
         st.warning("Run: `pip install folium streamlit-folium`")
         return
@@ -792,9 +907,10 @@ def render_heatmap(
     ).add_to(hfg)
     hfg.add_to(m)
 
-    folium.LayerControl(collapsed=False, position="topright").add_to(m)
+    folium.LayerControl(collapsed=phone_ui, position="topright").add_to(m)
 
-    st_folium(m, use_container_width=True, height=560, returned_objects=[])
+    heat_height = 460 if phone_ui else (520 if tablet_ui else 560)
+    st_folium(m, use_container_width=True, height=heat_height, returned_objects=[])
 
     # Legend row below map
     _render_file_legend(files_dict, active_names, show_ring_key=True)
@@ -805,8 +921,11 @@ def render_heatmap(
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _render_file_legend(files_dict, active_names, show_ring_key=False):
-    swatches = " &nbsp; ".join(
-        f'<span style="display:inline-flex;align-items:center;gap:5px;font-size:0.75rem;color:#94a3b8">'
+    phone_ui = is_phone_ui()
+    swatches = "".join(
+        f'<span style="display:inline-flex;align-items:center;gap:5px;'
+        f'font-size:{"0.68rem" if phone_ui else "0.75rem"};color:#94a3b8;'
+        f'margin:2px 8px 2px 0">'
         f'<span style="width:10px;height:10px;border-radius:50%;'
         f'background:{files_dict[n]["color"]};display:inline-block;flex-shrink:0"></span>'
         f'{n.replace(".csv","")}</span>'
@@ -823,7 +942,7 @@ def _render_file_legend(files_dict, active_names, show_ring_key=False):
             '<span style="color:#ef4444">●</span> Expired</span>'
         )
     st.markdown(
-        f'<div style="margin-top:0.5rem;padding:0.3rem 0">{swatches}{ring_key}</div>',
+        f'<div style="margin-top:0.5rem;padding:0.3rem 0;display:flex;flex-wrap:wrap;align-items:center">{swatches}{ring_key}</div>',
         unsafe_allow_html=True,
     )
 
@@ -833,6 +952,7 @@ def _render_file_legend(files_dict, active_names, show_ring_key=False):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def render_kpis(files_dict, active_names, status_filter):
+    phone_ui = is_phone_ui()
     total = current = review = stale = expired = 0
     file_rows = []
     region_values: set[str] = set()
@@ -862,15 +982,15 @@ def render_kpis(files_dict, active_names, status_filter):
     st.markdown(
         f'<div class="kpi-row">'
         f'<div class="kpi-card total"><div class="kpi-num">{total}</div>'
-        f'<div class="kpi-lbl">Total Cameras</div></div>'
+        f'<div class="kpi-lbl">{"Total" if phone_ui else "Total Cameras"}</div></div>'
         f'<div class="kpi-card green"><div class="kpi-num">{current}</div>'
-        f'<div class="kpi-lbl">Current &lt;90d</div></div>'
+        f'<div class="kpi-lbl">{"Current" if phone_ui else "Current &lt;90d"}</div></div>'
         f'<div class="kpi-card yellow"><div class="kpi-num">{review}</div>'
-        f'<div class="kpi-lbl">Review 90–180d</div></div>'
+        f'<div class="kpi-lbl">{"Review" if phone_ui else "Review 90–180d"}</div></div>'
         f'<div class="kpi-card orange"><div class="kpi-num">{stale}</div>'
-        f'<div class="kpi-lbl">Stale 180–360d</div></div>'
+        f'<div class="kpi-lbl">{"Stale" if phone_ui else "Stale 180–360d"}</div></div>'
         f'<div class="kpi-card red"><div class="kpi-num">{expired}</div>'
-        f'<div class="kpi-lbl">Expired &gt;360d</div></div>'
+        f'<div class="kpi-lbl">{"Expired" if phone_ui else "Expired &gt;360d"}</div></div>'
         f'<div class="kpi-card total"><div class="kpi-num">{region_count}</div>'
         f'<div class="kpi-lbl">Regions</div></div>'
         f'<div class="kpi-card total"><div class="kpi-num">{layer_count}</div>'
@@ -895,10 +1015,10 @@ def render_kpis(files_dict, active_names, status_filter):
                 for name, color, t, c, r, s, e in file_rows
             )
             st.markdown(
-                f'<table class="file-table"><thead><tr>'
+                f'<div class="table-scroll"><table class="file-table"><thead><tr>'
                 f'<th>Region / File</th><th>Total</th>'
                 f'<th>Current</th><th>Review</th><th>Stale</th><th>Expired</th>'
-                f'</tr></thead><tbody>{rows_html}</tbody></table>',
+                f'</tr></thead><tbody>{rows_html}</tbody></table></div>',
                 unsafe_allow_html=True,
             )
 
@@ -984,27 +1104,45 @@ def _build_metrics_context(files_dict, filtered_dict, active_names, status_filte
 
 
 def render_metrics_panel(files_dict, filtered_dict, active_names, status_filter):
+    phone_ui = is_phone_ui()
+    tablet_ui = is_tablet_ui()
+
     st.markdown('<div class="section-label">Admin Metrics — Usage & Ingest Statistics</div>', unsafe_allow_html=True)
 
     ctx = _build_metrics_context(files_dict, filtered_dict, active_names, status_filter)
     df_active = ctx["df_active"]
     per_file_df = ctx["per_file_df"]
 
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Loaded files", ctx["loaded_files"])
-    c2.metric("Active files", ctx["active_files"])
-    c3.metric("Rows ingested", f"{ctx['ingest_rows']:,}")
-    c4.metric("Rows parsed", f"{ctx['parsed_rows']:,}")
-    c5.metric("Parse success", f"{ctx['parse_success_pct']}%")
-
-    c6, c7, c8 = st.columns(3)
-    c6.metric("Conflict rows", f"{ctx['conflict_rows']:,}")
-    if not df_active.empty:
-        c7.metric("Active rows", f"{len(df_active):,}")
-        c8.metric("Expired %", f"{round((df_active['staleness_status'].eq('EXPIRED').mean()*100),1)}%")
+    if phone_ui:
+        p1, p2 = st.columns(2)
+        p1.metric("Loaded files", ctx["loaded_files"])
+        p2.metric("Active files", ctx["active_files"])
+        p3, p4 = st.columns(2)
+        p3.metric("Rows ingested", f"{ctx['ingest_rows']:,}")
+        p4.metric("Rows parsed", f"{ctx['parsed_rows']:,}")
+        p5, p6 = st.columns(2)
+        p5.metric("Parse success", f"{ctx['parse_success_pct']}%")
+        p6.metric("Conflict rows", f"{ctx['conflict_rows']:,}")
+        if not df_active.empty:
+            p7, p8 = st.columns(2)
+            p7.metric("Active rows", f"{len(df_active):,}")
+            p8.metric("Expired %", f"{round((df_active['staleness_status'].eq('EXPIRED').mean()*100),1)}%")
     else:
-        c7.metric("Active rows", "0")
-        c8.metric("Expired %", "0.0%")
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("Loaded files", ctx["loaded_files"])
+        c2.metric("Active files", ctx["active_files"])
+        c3.metric("Rows ingested", f"{ctx['ingest_rows']:,}")
+        c4.metric("Rows parsed", f"{ctx['parsed_rows']:,}")
+        c5.metric("Parse success", f"{ctx['parse_success_pct']}%")
+
+        c6, c7, c8 = st.columns(3)
+        c6.metric("Conflict rows", f"{ctx['conflict_rows']:,}")
+        if not df_active.empty:
+            c7.metric("Active rows", f"{len(df_active):,}")
+            c8.metric("Expired %", f"{round((df_active['staleness_status'].eq('EXPIRED').mean()*100),1)}%")
+        else:
+            c7.metric("Active rows", "0")
+            c8.metric("Expired %", "0.0%")
 
     st.markdown("---")
 
@@ -1056,17 +1194,20 @@ def render_metrics_panel(files_dict, filtered_dict, active_names, status_filter)
         else:
             trend_fig = None
 
-        left, right = st.columns(2)
+        left, right = st.columns(1) if phone_ui else st.columns(2)
         with left:
             st.plotly_chart(donut, use_container_width=True)
-        with right:
-            if trend_fig is not None:
-                st.plotly_chart(trend_fig, use_container_width=True)
-            else:
-                st.info("No parseable `last_seen` dates for monthly trend.")
+        if not phone_ui:
+            with right:
+                if trend_fig is not None:
+                    st.plotly_chart(trend_fig, use_container_width=True)
+                else:
+                    st.info("No parseable `last_seen` dates for monthly trend.")
+        elif trend_fig is not None:
+            st.plotly_chart(trend_fig, use_container_width=True)
 
         # Top entities + age distribution
-        c_top1, c_top2 = st.columns(2)
+        c_top1, c_top2 = st.columns(1) if phone_ui else st.columns(2)
 
         top_countries = df_active["country"].fillna("UNKNOWN").value_counts().head(10)
         fig_country = go.Figure(
@@ -1082,10 +1223,13 @@ def render_metrics_panel(files_dict, filtered_dict, active_names, status_filter)
 
         with c_top1:
             st.plotly_chart(fig_country, use_container_width=True)
-        with c_top2:
+        if not phone_ui:
+            with c_top2:
+                st.plotly_chart(fig_org, use_container_width=True)
+        else:
             st.plotly_chart(fig_org, use_container_width=True)
 
-        c_top3, c_top4 = st.columns(2)
+        c_top3, c_top4 = st.columns(1) if phone_ui else st.columns(2)
 
         top_ports = df_active["port"].astype(str).fillna("UNKNOWN").value_counts().head(10)
         fig_port = go.Figure(
@@ -1101,7 +1245,10 @@ def render_metrics_panel(files_dict, filtered_dict, active_names, status_filter)
 
         with c_top3:
             st.plotly_chart(fig_port, use_container_width=True)
-        with c_top4:
+        if not phone_ui:
+            with c_top4:
+                st.plotly_chart(fig_model, use_container_width=True)
+        else:
             st.plotly_chart(fig_model, use_container_width=True)
 
         fig_age = go.Figure(
@@ -1127,7 +1274,7 @@ def render_metrics_panel(files_dict, filtered_dict, active_names, status_filter)
         }
     ])
 
-    e1, e2, e3 = st.columns(3)
+    e1, e2, e3 = st.columns(1) if phone_ui else st.columns(3)
     with e1:
         st.download_button(
             "⬇ Metrics summary CSV",
@@ -1162,6 +1309,7 @@ def render_metrics_panel(files_dict, filtered_dict, active_names, status_filter)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def render_conflicts(files_dict):
+    phone_ui = is_phone_ui()
     any_errors = any(len(fd["errors"]) > 0 for fd in files_dict.values())
 
     if not any_errors:
@@ -1191,10 +1339,15 @@ def render_conflicts(files_dict):
             f'<div class="cc-row">'
             f'<b>Row {err["row_index"]}</b> · '
             f'Format attempted: <code>{err["format_detected"]}</code> · '
-            f'<span class="cc-reason">{err["reason"]}</span><br>'
-            f'<span style="color:#64748b;font-size:0.71rem">'
-            f'Raw: {" | ".join(f"{k}:{v}" for k,v in err["raw_values"].items()) or "N/A"}'
-            f'</span></div>'
+            f'<span class="cc-reason">{err["reason"]}</span>'
+            + (
+                ""
+                if phone_ui
+                else f'<br><span style="color:#64748b;font-size:0.71rem">'
+                     f'Raw: {" | ".join(f"{k}:{v}" for k,v in err["raw_values"].items()) or "N/A"}'
+                     f'</span>'
+            )
+            + '</div>'
             for err in errors
         )
 
@@ -1334,6 +1487,7 @@ def generate_bluf(files_dict, active_names, status_filter):
 
 def render_collection_schedule(files_dict, active_names, status_filter):
     """COA 1 panel: show per-poc_batch refresh schedule against 90/180/360 thresholds."""
+    phone_ui = is_phone_ui()
     frames = []
     for name in active_names:
         if name not in files_dict:
@@ -1396,7 +1550,15 @@ def render_collection_schedule(files_dict, active_names, status_filter):
         )
 
     sched_df = pd.DataFrame(rows).sort_values(by=["expired", "stale", "review", "rows"], ascending=False)
-    st.dataframe(sched_df, use_container_width=True, hide_index=True)
+    if phone_ui:
+        compact_cols = [
+            c for c in [
+                "poc_batch", "rows", "oldest_age_days", "to_90d", "to_180d", "to_360d", "expired"
+            ] if c in sched_df.columns
+        ]
+        st.dataframe(sched_df[compact_cols], use_container_width=True, hide_index=True)
+    else:
+        st.dataframe(sched_df, use_container_width=True, hide_index=True)
     st.download_button(
         "⬇ Collection Schedule CSV",
         data=sched_df.to_csv(index=False).encode("utf-8"),
@@ -1434,6 +1596,9 @@ def send_email_alert(subject, body):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def render_sidebar(files_dict):
+    phone_ui = is_phone_ui()
+    tablet_ui = is_tablet_ui()
+
     st.sidebar.markdown(
         '<p style="font-family:\'Share Tech Mono\',monospace;font-size:0.75rem;'
         'letter-spacing:0.12em;color:#475569;text-transform:uppercase;">'
@@ -1458,7 +1623,7 @@ def render_sidebar(files_dict):
             st.caption(f"Lockout seconds: {max(5, int(os.getenv('PILOT_LOCKOUT_SECONDS', '15')))}")
         st.sidebar.markdown("---")
 
-    # ── Multi-file uploader ───────────────────────────────────────────────────
+    # ── Upload ────────────────────────────────────────────────────────────────
     uploaded_files = st.sidebar.file_uploader(
         "Upload region CSV(s)",
         type=["csv"],
@@ -1470,12 +1635,120 @@ def render_sidebar(files_dict):
         ),
     )
 
+    # ── Bundled test fixtures (for repeatable multi-device ingest) ───────────
+    fixture_paths = []
+    fixture_candidates = discover_fixture_files()
+    fixture_map = {p.name: p for p in fixture_candidates}
+    required_missing = missing_required_fixtures(fixture_candidates)
+
+    with st.sidebar.expander("Bundled Test Data", expanded=False):
+        st.toggle(
+            "Auto-load sample data",
+            key="sample_data_autoload",
+            help="When enabled, bundled fixture CSVs auto-load on empty sessions.",
+        )
+
+        if REQUIRE_BUNDLED_FIXTURES:
+            if required_missing:
+                st.error(f"Missing required fixtures ({len(required_missing)}/{len(REQUIRED_BUNDLED_FIXTURE_FILENAMES)}).")
+                st.caption("Required baseline: " + ", ".join(REQUIRED_BUNDLED_FIXTURE_FILENAMES))
+            else:
+                st.success("Required fixture baseline present.")
+
+        if not fixture_map:
+            st.caption("No bundled CSV fixtures found in app directory.")
+        else:
+            st.caption(f"Detected {len(fixture_map)} local fixture CSV file(s).")
+
+            selected_fixtures = st.multiselect(
+                "Select fixture CSV(s) to load",
+                options=list(fixture_map.keys()),
+                default=[],
+                key="fixture_select_names",
+            )
+
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("Load selected", use_container_width=True):
+                    st.session_state.fixture_load_queue = [
+                        str(fixture_map[name]) for name in selected_fixtures if name in fixture_map
+                    ]
+                    st.rerun()
+            with c2:
+                if st.button("Clear", use_container_width=True):
+                    st.session_state.fixture_load_queue = []
+
+            # Download all selected as ZIP
+            if selected_fixtures:
+                zip_buffer = io.BytesIO()
+                with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+                    for name in selected_fixtures:
+                        p = fixture_map.get(name)
+                        if p and p.exists():
+                            zf.writestr(name, p.read_bytes())
+                zip_buffer.seek(0)
+                st.download_button(
+                    "⬇ Download selected (.zip)",
+                    data=zip_buffer.getvalue(),
+                    file_name=f"wraith_test_fixtures_{datetime.date.today().isoformat()}.zip",
+                    mime="application/zip",
+                    use_container_width=True,
+                )
+
+            # Per-file download buttons
+            for name, p in fixture_map.items():
+                st.download_button(
+                    f"⬇ {name}",
+                    data=p.read_bytes(),
+                    file_name=name,
+                    mime="text/csv",
+                    key=f"dl_fixture_{name}",
+                    use_container_width=True,
+                )
+
+    fixture_paths = st.session_state.pop("fixture_load_queue", []) if "fixture_load_queue" in st.session_state else []
+
+    st.sidebar.markdown("---")
+
+    # ── Primary navigation (View) ─────────────────────────────────────────────
+    st.sidebar.markdown('<div class="section-label">View</div>', unsafe_allow_html=True)
+    view_options = ["Globe", "Flat Map", "Heatmap", "Data Table", "Conflicts", "Alerts & Export"]
+    if st.session_state.admin_metrics_ok:
+        view_options.append("Metrics")
+    view = st.sidebar.radio(
+        "Panel",
+        options=view_options,
+        label_visibility="collapsed",
+    )
+
+    st.sidebar.markdown("---")
+
+    # ── Filters ───────────────────────────────────────────────────────────────
+    st.sidebar.markdown('<div class="section-label">Filters</div>', unsafe_allow_html=True)
+
+    status_filter = st.sidebar.multiselect(
+        "Staleness",
+        options=STALENESS_ORDER,
+        default=STALENESS_ORDER,
+    )
+
+    country_filter = []
+    if files_dict:
+        all_countries = sorted(set(
+            c for fd in files_dict.values()
+            for c in fd["df"]["country"].dropna().unique()
+        ))
+        if all_countries:
+            country_filter = st.sidebar.multiselect(
+                "Country", options=all_countries, default=all_countries,
+            )
+
     st.sidebar.markdown("---")
 
     # ── Layer controls — one row per loaded file ──────────────────────────────
     active_names = []
     if files_dict:
-        with st.sidebar.expander("Layers", expanded=True):
+        with st.sidebar.expander("Layers", expanded=not phone_ui):
             for name, fdata in files_dict.items():
                 visible = st.checkbox(
                     f"{name.replace('.csv','')}",
@@ -1503,123 +1776,88 @@ def render_sidebar(files_dict):
 
     st.sidebar.markdown("---")
 
-    # ── Admin access (metrics) ────────────────────────────────────────────────
-    st.sidebar.markdown('<div class="section-label">Admin Access</div>', unsafe_allow_html=True)
-    admin_phrase = os.getenv("ADMIN_METRICS_PASSPHRASE", "wraith")
-    admin_input = st.sidebar.text_input("Metrics passphrase", type="password", key="admin_metrics_phrase_input")
-    a1, a2 = st.sidebar.columns(2)
-    with a1:
-        if st.button("Unlock", use_container_width=True):
-            if admin_input and admin_input == admin_phrase:
-                st.session_state.admin_metrics_ok = True
-                st.sidebar.success("Admin metrics unlocked")
-            else:
+    # ── Advanced controls (collapsed on phone) ───────────────────────────────
+    advanced_expanded = not phone_ui and not tablet_ui
+    with st.sidebar.expander("Advanced Controls", expanded=advanced_expanded):
+        # Map options
+        st.markdown('<div class="section-label">Map Options</div>', unsafe_allow_html=True)
+
+        # Email alerts
+        st.markdown('<div class="section-label">Email Alerts</div>', unsafe_allow_html=True)
+        email_enabled = st.toggle(
+            "Enable email alerts", value=False,
+            help="Set ALERT_EMAIL_FROM / _PASSWORD / _TO in .env",
+        )
+        if email_enabled:
+            if st.button("Send test email"):
+                ok, msg = send_email_alert("WRAITH — Test Alert", "Test alert from WRAITH.")
+                st.success("Sent.") if ok else st.error(msg)
+
+        st.markdown("---")
+
+        # Admin access (metrics)
+        st.markdown('<div class="section-label">Admin Access</div>', unsafe_allow_html=True)
+        admin_phrase = os.getenv("ADMIN_METRICS_PASSPHRASE", "wraith")
+        admin_input = st.text_input("Metrics passphrase", type="password", key="admin_metrics_phrase_input")
+        a1, a2 = st.columns(2)
+        with a1:
+            if st.button("Unlock", use_container_width=True):
+                if admin_input and admin_input == admin_phrase:
+                    st.session_state.admin_metrics_ok = True
+                    st.success("Admin metrics unlocked")
+                else:
+                    st.session_state.admin_metrics_ok = False
+                    st.error("Invalid passphrase")
+        with a2:
+            if st.button("Lock", use_container_width=True):
                 st.session_state.admin_metrics_ok = False
-                st.sidebar.error("Invalid passphrase")
-    with a2:
-        if st.button("Lock", use_container_width=True):
-            st.session_state.admin_metrics_ok = False
 
-    st.sidebar.markdown("---")
-
-    # ── Panel selector ────────────────────────────────────────────────────────
-    st.sidebar.markdown('<div class="section-label">View</div>', unsafe_allow_html=True)
-    view_options = ["Globe", "Flat Map", "Heatmap", "Data Table", "Conflicts", "Alerts & Export"]
-    if st.session_state.admin_metrics_ok:
-        view_options.append("Metrics")
-    view = st.sidebar.radio(
-        "Panel",
-        options=view_options,
-        label_visibility="collapsed",
-    )
-
-    # Map options
     auto_rotate = False
     heat_tile_style = "Dark (CartoDB)"
     heat_use_cluster = True
     heat_marker_radius = 6
     heat_radius = 20
-    heat_show_minimap = True
+    heat_show_minimap = not phone_ui
 
     if view == "Globe":
-        st.sidebar.markdown(
-            '<div class="section-label" style="margin-top:0.4rem">Map Options</div>',
-            unsafe_allow_html=True,
-        )
-        auto_rotate = st.sidebar.toggle("Auto-rotate", value=False)
+        auto_rotate = st.toggle("Auto-rotate", value=False, disabled=phone_ui)
     elif view == "Heatmap":
-        st.sidebar.markdown(
-            '<div class="section-label" style="margin-top:0.4rem">Map Options</div>',
-            unsafe_allow_html=True,
-        )
-        heat_tile_style = st.sidebar.selectbox(
+        heat_tile_style = st.selectbox(
             "Basemap",
             options=list(HEATMAP_TILES.keys()),
             index=0,
             help="Switch to a more detailed base map (street, terrain, satellite, etc.).",
         )
-        heat_use_cluster = st.sidebar.toggle(
+        heat_use_cluster = st.toggle(
             "Cluster markers",
-            value=True,
+            value=not phone_ui,
             help="Group nearby cameras at low zoom for denser regions.",
         )
-        heat_show_minimap = st.sidebar.toggle(
+        heat_show_minimap = st.toggle(
             "Show minimap",
-            value=True,
+            value=not phone_ui,
             help="Display a small overview map for quicker navigation.",
         )
-        heat_marker_radius = st.sidebar.slider(
+        heat_marker_radius = st.slider(
             "Marker size",
             min_value=4,
             max_value=10,
-            value=6,
+            value=5 if phone_ui else 6,
         )
-        heat_radius = st.sidebar.slider(
+        heat_radius = st.slider(
             "Heat radius",
             min_value=10,
             max_value=35,
-            value=20,
+            value=16 if phone_ui else 20,
         )
-
-    st.sidebar.markdown("---")
-
-    # ── Filters ───────────────────────────────────────────────────────────────
-    st.sidebar.markdown('<div class="section-label">Filters</div>', unsafe_allow_html=True)
-
-    status_filter = st.sidebar.multiselect(
-        "Staleness",
-        options=STALENESS_ORDER,
-        default=STALENESS_ORDER,
-    )
-
-    country_filter = []
-    if files_dict:
-        all_countries = sorted(set(
-            c for fd in files_dict.values()
-            for c in fd["df"]["country"].dropna().unique()
-        ))
-        if all_countries:
-            country_filter = st.sidebar.multiselect(
-                "Country", options=all_countries, default=all_countries,
-            )
-
-    st.sidebar.markdown("---")
-
-    # ── Email alerts ──────────────────────────────────────────────────────────
-    st.sidebar.markdown('<div class="section-label">Email Alerts</div>', unsafe_allow_html=True)
-    email_enabled = st.sidebar.toggle(
-        "Enable email alerts", value=False,
-        help="Set ALERT_EMAIL_FROM / _PASSWORD / _TO in .env",
-    )
-    if email_enabled:
-        if st.sidebar.button("Send test email"):
-            ok, msg = send_email_alert("WRAITH — Test Alert", "Test alert from WRAITH.")
-            st.sidebar.success("Sent.") if ok else st.sidebar.error(msg)
 
     return (
         uploaded_files, view, auto_rotate,
         status_filter, country_filter, email_enabled, active_names,
         heat_tile_style, heat_use_cluster, heat_marker_radius, heat_radius, heat_show_minimap,
+        fixture_paths,
+        required_missing,
+        bool(st.session_state.get("sample_data_autoload", AUTO_PRELOAD_TEST_FIXTURES)),
         st.session_state.admin_metrics_ok,
     )
 
@@ -1632,6 +1870,7 @@ def main():
     init_session()
     apply_splash_background()
     require_pilot_access()
+    ui_profile = get_ui_profile()
 
     # ── Header ────────────────────────────────────────────────────────────────
     render_text_header = True
@@ -1662,16 +1901,40 @@ def main():
             unsafe_allow_html=True,
         )
 
+    st.caption(f"UI profile: {ui_profile} (set with ?ui=phone | ?ui=tablet | ?ui=desktop)")
+
     files_dict = st.session_state.files
 
     # ── Sidebar ───────────────────────────────────────────────────────────────
     (uploaded_files, view, auto_rotate,
      status_filter, country_filter, email_enabled, active_names,
      heat_tile_style, heat_use_cluster, heat_marker_radius, heat_radius, heat_show_minimap,
+     fixture_paths,
+     required_missing,
+     sample_data_autoload,
      admin_metrics_ok) = render_sidebar(files_dict)
+
+    if REQUIRE_BUNDLED_FIXTURES and required_missing:
+        st.error(
+            "Bundled Test Data is required for this deployment, but required fixtures are missing: "
+            + ", ".join(required_missing)
+        )
+        st.info(
+            "Add required CSVs to the app directory (same folder as app.py) or `data/fixtures/`, then rerun."
+        )
+        st.stop()
 
     # Build a unified list of incoming files from uploader + local sample buttons.
     incoming_files = list(uploaded_files) if uploaded_files else []
+    if fixture_paths:
+        incoming_files.extend(fixture_paths)
+
+    # Optional POC convenience: auto-preload bundled fixtures when session starts empty.
+    if sample_data_autoload and not files_dict and not incoming_files:
+        auto_fixture_paths = [str(p) for p in discover_fixture_files()]
+        if auto_fixture_paths:
+            incoming_files.extend(auto_fixture_paths)
+            st.info(f"Auto-loading {len(auto_fixture_paths)} bundled test fixture file(s).")
 
     # ── Ingest newly uploaded files ───────────────────────────────────────────
     if incoming_files:
@@ -1868,6 +2131,8 @@ def main():
 
     elif view == "Data Table":
         st.markdown('<div class="section-label">Data Table</div>', unsafe_allow_html=True)
+        phone_ui = is_phone_ui()
+        tablet_ui = is_tablet_ui()
 
         # Merge all active files with a source_file column
         all_frames = []
@@ -1882,11 +2147,22 @@ def main():
             st.info("No data matches current filters.")
         else:
             df_table = pd.concat(all_frames, ignore_index=True)
-            show_cols = [
-                "source_file", "ip", "location_label", "device_type",
-                "model", "last_seen", "age_months", "staleness_status",
-                "country", "port", "org",
-            ]
+            if phone_ui:
+                show_cols = [
+                    "source_file", "location_label", "staleness_status",
+                    "country", "last_seen",
+                ]
+            elif tablet_ui:
+                show_cols = [
+                    "source_file", "ip", "location_label", "model",
+                    "last_seen", "age_months", "staleness_status", "country",
+                ]
+            else:
+                show_cols = [
+                    "source_file", "ip", "location_label", "device_type",
+                    "model", "last_seen", "age_months", "staleness_status",
+                    "country", "port", "org",
+                ]
             available = [c for c in show_cols if c in df_table.columns]
 
             def style_status(val):
@@ -1918,17 +2194,22 @@ def main():
 
     elif view == "Alerts & Export":
         st.markdown('<div class="section-label">Alerts & Export</div>', unsafe_allow_html=True)
+        phone_ui = is_phone_ui()
+        tablet_ui = is_tablet_ui()
 
         bluf_text = generate_bluf(filtered_dict, active_names, status_filter)
-        st.text_area("BLUF Summary", value=bluf_text, height=400)
+        st.text_area("BLUF Summary", value=bluf_text, height=300 if phone_ui else 400)
 
         st.markdown("---")
         st.markdown('<div class="section-label">Collection Schedule (by poc_batch)</div>', unsafe_allow_html=True)
         render_collection_schedule(filtered_dict, active_names, status_filter)
 
-        col1, col2, col3 = st.columns(3)
+        if phone_ui:
+            col1 = col2 = col3 = None
+        else:
+            col1, col2, col3 = st.columns(3)
 
-        with col1:
+        if phone_ui:
             st.download_button(
                 "⬇ BLUF Report (.txt)",
                 data=bluf_text,
@@ -1936,8 +2217,17 @@ def main():
                 mime="text/plain",
                 use_container_width=True,
             )
+        else:
+            with col1:
+                st.download_button(
+                    "⬇ BLUF Report (.txt)",
+                    data=bluf_text,
+                    file_name=f"wraith_bluf_{datetime.date.today().isoformat()}.txt",
+                    mime="text/plain",
+                    use_container_width=True,
+                )
 
-        with col2:
+        def _render_full_dataset_btn():
             all_frames = []
             for name in active_names:
                 if name not in filtered_dict:
@@ -1957,7 +2247,13 @@ def main():
                     use_container_width=True,
                 )
 
-        with col3:
+        if phone_ui:
+            _render_full_dataset_btn()
+        else:
+            with col2:
+                _render_full_dataset_btn()
+
+        def _render_conflicts_btn():
             all_conflicts = []
             for name, fd in files_dict.items():
                 for err in fd["errors"]:
@@ -1980,6 +2276,12 @@ def main():
                 )
             else:
                 st.button("No conflicts to export", disabled=True, use_container_width=True)
+
+        if phone_ui:
+            _render_conflicts_btn()
+        else:
+            with col3:
+                _render_conflicts_btn()
 
         st.markdown("---")
         st.markdown('<div class="section-label">Manual Email Send</div>', unsafe_allow_html=True)
