@@ -1635,78 +1635,14 @@ def render_sidebar(files_dict):
         ),
     )
 
-    # ── Bundled test fixtures (for repeatable multi-device ingest) ───────────
-    fixture_paths = []
-    fixture_candidates = discover_fixture_files()
-    fixture_map = {p.name: p for p in fixture_candidates}
-    required_missing = missing_required_fixtures(fixture_candidates)
-
-    with st.sidebar.expander("Bundled Test Data", expanded=False):
-        st.toggle(
-            "Auto-load sample data",
-            key="sample_data_autoload",
-            help="When enabled, bundled fixture CSVs auto-load on empty sessions.",
-        )
-
-        if REQUIRE_BUNDLED_FIXTURES:
-            if required_missing:
-                st.error(f"Missing required fixtures ({len(required_missing)}/{len(REQUIRED_BUNDLED_FIXTURE_FILENAMES)}).")
-                st.caption("Required baseline: " + ", ".join(REQUIRED_BUNDLED_FIXTURE_FILENAMES))
-            else:
-                st.success("Required fixture baseline present.")
-
-        if not fixture_map:
-            st.caption("No bundled CSV fixtures found in app directory.")
-        else:
-            st.caption(f"Detected {len(fixture_map)} local fixture CSV file(s).")
-
-            selected_fixtures = st.multiselect(
-                "Select fixture CSV(s) to load",
-                options=list(fixture_map.keys()),
-                default=[],
-                key="fixture_select_names",
-            )
-
-            c1, c2 = st.columns(2)
-            with c1:
-                if st.button("Load selected", use_container_width=True):
-                    st.session_state.fixture_load_queue = [
-                        str(fixture_map[name]) for name in selected_fixtures if name in fixture_map
-                    ]
-                    st.rerun()
-            with c2:
-                if st.button("Clear", use_container_width=True):
-                    st.session_state.fixture_load_queue = []
-
-            # Download all selected as ZIP
-            if selected_fixtures:
-                zip_buffer = io.BytesIO()
-                with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-                    for name in selected_fixtures:
-                        p = fixture_map.get(name)
-                        if p and p.exists():
-                            zf.writestr(name, p.read_bytes())
-                zip_buffer.seek(0)
-                st.download_button(
-                    "⬇ Download selected (.zip)",
-                    data=zip_buffer.getvalue(),
-                    file_name=f"wraith_test_fixtures_{datetime.date.today().isoformat()}.zip",
-                    mime="application/zip",
-                    use_container_width=True,
-                )
-
-            # Per-file download buttons
-            for name, p in fixture_map.items():
-                st.download_button(
-                    f"⬇ {name}",
-                    data=p.read_bytes(),
-                    file_name=name,
-                    mime="text/csv",
-                    key=f"dl_fixture_{name}",
-                    use_container_width=True,
-                )
-
-    fixture_paths = st.session_state.pop("fixture_load_queue", []) if "fixture_load_queue" in st.session_state else []
+    # ── Bundled Test Data on/off toggle ──────────────────────────────────────
+    _bundled_on = st.sidebar.toggle(
+        "Bundled Test Data",
+        value=False,
+        key="bundled_test_toggle",
+        help="Load all bundled WRAITH sample CSVs as layers. Toggle off to remove them.",
+    )
+    bundled_paths = [str(p) for p in discover_fixture_files()] if _bundled_on else []
 
     st.sidebar.markdown("---")
 
@@ -1852,12 +1788,9 @@ def render_sidebar(files_dict):
         )
 
     return (
-        uploaded_files, view, auto_rotate,
+        uploaded_files, bundled_paths, view, auto_rotate,
         status_filter, country_filter, email_enabled, active_names,
         heat_tile_style, heat_use_cluster, heat_marker_radius, heat_radius, heat_show_minimap,
-        fixture_paths,
-        required_missing,
-        bool(st.session_state.get("sample_data_autoload", AUTO_PRELOAD_TEST_FIXTURES)),
         st.session_state.admin_metrics_ok,
     )
 
@@ -1892,35 +1825,27 @@ def main():
     files_dict = st.session_state.files
 
     # ── Sidebar ───────────────────────────────────────────────────────────────
-    (uploaded_files, view, auto_rotate,
+    (uploaded_files, bundled_paths, view, auto_rotate,
      status_filter, country_filter, email_enabled, active_names,
      heat_tile_style, heat_use_cluster, heat_marker_radius, heat_radius, heat_show_minimap,
-     fixture_paths,
-     required_missing,
-     sample_data_autoload,
      admin_metrics_ok) = render_sidebar(files_dict)
 
-    if REQUIRE_BUNDLED_FIXTURES and required_missing:
-        st.error(
-            "Bundled Test Data is required for this deployment, but required fixtures are missing: "
-            + ", ".join(required_missing)
-        )
-        st.info(
-            "Add required CSVs to the app directory (same folder as app.py) or `data/fixtures/`, then rerun."
-        )
-        st.stop()
+    # ── Bundled toggle: unload files removed when toggled off ─────────────────
+    _bundled_names = {Path(p).name for p in bundled_paths}
+    _prev_bundled = st.session_state.get("_bundled_active_names", set())
+    _removed = _prev_bundled - _bundled_names
+    if _removed:
+        for _bn in _removed:
+            st.session_state.files.pop(_bn, None)
+        st.session_state["_bundled_active_names"] = set()
+        st.rerun()
+    st.session_state["_bundled_active_names"] = _bundled_names
 
-    # Build a unified list of incoming files from uploader + local sample buttons.
+    # Build a unified list of incoming files from uploader + bundled toggle.
     incoming_files = list(uploaded_files) if uploaded_files else []
-    if fixture_paths:
-        incoming_files.extend(fixture_paths)
-
-    # Optional POC convenience: auto-preload bundled fixtures when session starts empty.
-    if sample_data_autoload and not files_dict and not incoming_files:
-        auto_fixture_paths = [str(p) for p in discover_fixture_files()]
-        if auto_fixture_paths:
-            incoming_files.extend(auto_fixture_paths)
-            st.info(f"Auto-loading {len(auto_fixture_paths)} bundled test fixture file(s).")
+    for _bp in bundled_paths:
+        if Path(_bp).name not in st.session_state.files:
+            incoming_files.append(_bp)
 
     # ── Ingest newly uploaded files ───────────────────────────────────────────
     if incoming_files:
