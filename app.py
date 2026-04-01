@@ -1873,21 +1873,7 @@ def main():
     ui_profile = get_ui_profile()
 
     # ── Header ────────────────────────────────────────────────────────────────
-    render_text_header = True
-    if LOGO_SVG_PATH.exists():
-        try:
-            svg = LOGO_SVG_PATH.read_text(encoding="utf-8")
-            # If the SVG already embeds title text, avoid duplicate title rendering below.
-            if "WRAITH" in svg.upper():
-                render_text_header = False
-            st.markdown(
-                f'<div class="brand-logo-wrap">{svg}</div>',
-                unsafe_allow_html=True,
-            )
-        except Exception:
-            pass
-
-    if render_text_header:
+    if True:
         st.markdown(
             '<div class="cw-header">'
             '<h1>◈ WRAITH</h1>'
@@ -1992,16 +1978,79 @@ def main():
             '</div>',
             unsafe_allow_html=True,
         )
-        with st.expander("Supported coordinate formats"):
-            st.markdown("""
-| Format | Accepted column names | Example |
-|---|---|---|
-| Decimal degrees | `lat`, `lon`, `latitude`, `longitude` | `38.8951` / `-77.0364` |
-| MGRS | `mgrs`, `grid`, `grid_ref` | `18SUJ2338308450` |
-| DMS | `dms_lat`, `dms_lon` | `38°53'42"N` |
-| UTM | `utm`, `utm_coord` | `18N 323830 4308450` |
-| Combined | `coordinates`, `lat/lon` | `38.8951, -77.0364` |
-""")
+        with st.expander("Supported coordinate formats — Training Guide"):
+            st.caption("Toggle each format on to reveal a detailed training example.")
+            _FORMAT_TRAINING = {
+                "Decimal Degrees": {
+                    "columns": "`lat`, `lon`, `latitude`, `longitude`",
+                    "example": "`38.8951` / `-77.0364`",
+                    "notes": "Most common format. Provide separate lat and lon columns with signed decimal values. Negative lon = West, negative lat = South.",
+                    "csv": (
+                        "ip,latitude,longitude,device_type,model,location_label,"
+                        "last_seen,port,org,country\n"
+                        "192.168.10.1,38.8951,-77.0364,IP Camera,Hikvision DS-2CD2085G1,"
+                        "Pentagon Area,2026-01-15,554,Comcast,US\n"
+                        "10.0.0.5,40.7128,-74.0060,PTZ Camera,Axis P5655-E,"
+                        "Times Square,2025-09-10,80,Verizon,US"
+                    ),
+                },
+                "MGRS": {
+                    "columns": "`mgrs`, `grid`, `grid_ref`",
+                    "example": "`18SUJ2338308450`",
+                    "notes": "Military Grid Reference System. Single column. Zone + band + 100km square + easting + northing (even digit count).",
+                    "csv": (
+                        "ip,mgrs,device_type,model,location_label,"
+                        "last_seen,port,org,country\n"
+                        "10.0.0.5,18SUJ2338308450,PTZ Camera,Axis P5655-E,"
+                        "Capitol Hill,2026-01-20,80,Verizon,US\n"
+                        "172.16.0.3,18SUJ2284608900,Dome Camera,Dahua SD49425XB,"
+                        "Pentagon,2025-09-10,8080,AT&T,US"
+                    ),
+                },
+                "DMS (Degrees Minutes Seconds)": {
+                    "columns": "`dms_lat`, `dms_lon`",
+                    "example": "`38°53'42\"N` / `77°01'58\"W`",
+                    "notes": "Requires two separate columns. Hemisphere suffix (N/S/E/W) is mandatory. Quote fields in CSV if they contain special characters.",
+                    "csv": (
+                        "ip,dms_lat,dms_lon,device_type,model,location_label,"
+                        "last_seen,port,org,country\n"
+                        "172.16.0.3,\"38°53'42\"\"N\",\"77°01'58\"\"W\",Dome Camera,"
+                        "Dahua SD49425XB,Pentagon,2025-09-10,8080,AT&T,US"
+                    ),
+                },
+                "UTM (Universal Transverse Mercator)": {
+                    "columns": "`utm`, `utm_coord`",
+                    "example": "`18N 323830 4308450`",
+                    "notes": "Single column. Format: zone + hemisphere letter + space + easting + space + northing.",
+                    "csv": (
+                        "ip,utm_coord,device_type,model,location_label,"
+                        "last_seen,port,org,country\n"
+                        "10.10.1.7,18N 323830 4308450,IP Camera,Bosch FLEXIDOME,"
+                        "Times Square,2025-07-04,554,Spectrum,US"
+                    ),
+                },
+                "Combined Lat/Lon": {
+                    "columns": "`coordinates`, `lat/lon`, `lat_lon`, `coord`, `coords`",
+                    "example": '`"38.8951, -77.0364"`',
+                    "notes": "Single column containing lat and lon as a comma-separated string. Must be quoted in CSV because it contains a comma.",
+                    "csv": (
+                        "ip,coordinates,device_type,model,location_label,"
+                        "last_seen,port,org,country\n"
+                        '100.65.2.20,"38.9072, -77.0369",IP Camera,Axis Q6135-LE,'
+                        "Capitol Hill,2026-01-20,554,Comcast,US\n"
+                        '100.65.2.21,"29.7604, -95.3698",PTZ Camera,Sony SNC-EP580,'
+                        "Houston Galleria,2025-08-22,80,AT&T,US"
+                    ),
+                },
+            }
+            for _fmt_name, _fmt in _FORMAT_TRAINING.items():
+                _show = st.toggle(_fmt_name, value=False, key=f"_fmt_toggle_{_fmt_name}")
+                if _show:
+                    st.markdown(f"**Accepted columns:** {_fmt['columns']}")
+                    st.markdown(f"**Example value:** {_fmt['example']}")
+                    st.markdown(f"**Usage note:** {_fmt['notes']}")
+                    st.code(_fmt["csv"], language="text")
+                    st.divider()
         return
 
     # ── Coordinate format badges (one per loaded file) ────────────────────────
