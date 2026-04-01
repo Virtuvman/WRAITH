@@ -1683,32 +1683,27 @@ def render_sidebar(files_dict):
 
     # ── Layer controls — one row per loaded file ──────────────────────────────
     active_names = []
+    _to_remove = []
     if files_dict:
         with st.sidebar.expander("Layers", expanded=not phone_ui):
             for name, fdata in files_dict.items():
-                visible = st.checkbox(
-                    f"{name.replace('.csv','')}",
+                conflict_note = f" · ⚡ {len(fdata['errors'])} conflicts" if fdata["errors"] else ""
+                label = f"{name.replace('.csv', '')}  ({len(fdata['df'])} cameras{conflict_note})"
+                loaded = st.toggle(
+                    label,
                     value=True,
                     key=f"layer_{name}",
+                    help="Toggle off to remove this file.",
                 )
-
-                # Keep metadata in native Streamlit text to avoid CSS overlap issues.
-                conflict_note = f" · ⚡ {len(fdata['errors'])} conflicts" if fdata["errors"] else ""
-                st.caption(f"{len(fdata['df'])} cameras{conflict_note}")
-
-                if st.button(
-                    f"Remove {name.replace('.csv', '')}",
-                    key=f"rm_{name}",
-                    use_container_width=True,
-                ):
-                    if name in st.session_state.files:
-                        del st.session_state.files[name]
-                        st.rerun()
-
-                st.markdown("---")
-
-                if visible:
+                if loaded:
                     active_names.append(name)
+                else:
+                    _to_remove.append(name)
+
+    if _to_remove:
+        for _n in _to_remove:
+            st.session_state.files.pop(_n, None)
+        st.rerun()
 
     st.sidebar.markdown("---")
 
@@ -1756,7 +1751,7 @@ def render_sidebar(files_dict):
     heat_show_minimap = not phone_ui
 
     if view == "Globe":
-        auto_rotate = st.toggle("Auto-rotate", value=False, disabled=phone_ui)
+        auto_rotate = st.toggle("Auto-rotate", value=False)
     elif view == "Heatmap":
         heat_tile_style = st.selectbox(
             "Basemap",
