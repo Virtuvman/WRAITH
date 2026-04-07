@@ -445,6 +445,20 @@ def init_session():
         st.session_state.admin_metrics_ok = False
     if "sample_data_autoload" not in st.session_state:
         st.session_state.sample_data_autoload = AUTO_PRELOAD_TEST_FIXTURES
+    if "wigle_networks" not in st.session_state:
+        st.session_state.wigle_networks = None
+    if "wigle_enabled" not in st.session_state:
+        st.session_state.wigle_enabled = False
+    if "shodan_mock" not in st.session_state:
+        st.session_state.shodan_mock = True
+    if "shodan_api_key" not in st.session_state:
+        st.session_state.shodan_api_key = ""
+    if "_last_shodan_df" not in st.session_state:
+        st.session_state._last_shodan_df = None
+    if "_last_osm_df" not in st.session_state:
+        st.session_state._last_osm_df = None
+    if "_last_tg_df" not in st.session_state:
+        st.session_state._last_tg_df = None
 
 
 def require_pilot_access() -> None:
@@ -595,6 +609,60 @@ def render_globe(files_dict, active_names, status_filter, auto_rotate=False):
                 unselected=dict(marker=dict(opacity=0.3)),
             ))
             first_trace = False
+
+    # ── WiGLE Signals overlay ─────────────────────────────────────────────────
+    _wigle_nets = st.session_state.get("wigle_networks")
+    if st.session_state.get("wigle_enabled") and _wigle_nets is not None and not _wigle_nets.empty:
+        _enc_colors = {
+            "open":  "#ef4444",
+            "wep":   "#f97316",
+            "wpa":   "#eab308",
+            "wpa2":  "#22c55e",
+            "wpa3":  "#38bdf8",
+        }
+        _wifi = _wigle_nets[_wigle_nets["type"] == "wifi"]
+        _cell = _wigle_nets[_wigle_nets["type"] == "cell"]
+        _bt   = _wigle_nets[_wigle_nets["type"] == "bluetooth"]
+
+        if not _wifi.empty:
+            fig.add_trace(go.Scattergeo(
+                lat=_wifi["trilat"], lon=_wifi["trilong"],
+                mode="markers",
+                name="WiFi",
+                legendgroup="WiGLE Signals",
+                legendgrouptitle_text="WiGLE Signals",
+                marker=dict(
+                    size=4, opacity=0.65, symbol="circle-open",
+                    color=[_enc_colors.get(str(e).lower(), "#64748b") for e in _wifi["encryption"]],
+                ),
+                hovertemplate=(
+                    "<b>%{customdata[0]}</b><br>"
+                    "Enc: %{customdata[1]}<br>"
+                    "RSSI: %{customdata[2]} dBm<br>"
+                    "Near: %{customdata[3]}<extra></extra>"
+                ),
+                customdata=_wifi[["ssid", "encryption", "bestrssi", "near_camera"]].values,
+            ))
+        if not _cell.empty:
+            fig.add_trace(go.Scattergeo(
+                lat=_cell["trilat"], lon=_cell["trilong"],
+                mode="markers",
+                name="Cell",
+                legendgroup="WiGLE Signals",
+                marker=dict(size=4, opacity=0.55, symbol="triangle-up-open", color="#34d399"),
+                hovertemplate="Cell tower<br>Near: %{customdata[0]}<extra></extra>",
+                customdata=_cell[["near_camera"]].values,
+            ))
+        if not _bt.empty:
+            fig.add_trace(go.Scattergeo(
+                lat=_bt["trilat"], lon=_bt["trilong"],
+                mode="markers",
+                name="Bluetooth",
+                legendgroup="WiGLE Signals",
+                marker=dict(size=3, opacity=0.45, symbol="square-open", color="#fb923c"),
+                hovertemplate="Bluetooth<br>Near: %{customdata[0]}<extra></extra>",
+                customdata=_bt[["near_camera"]].values,
+            ))
 
     fig.update_geos(
         projection_type="orthographic",
@@ -890,6 +958,36 @@ def render_heatmap(
 
         fg.add_to(m)
 
+    # ── WiGLE Signals FeatureGroup ────────────────────────────────────────────
+    _wigle_nets = st.session_state.get("wigle_networks")
+    if st.session_state.get("wigle_enabled") and _wigle_nets is not None and not _wigle_nets.empty:
+        _enc_hex = {
+            "open":  "#ef4444",
+            "wep":   "#f97316",
+            "wpa":   "#eab308",
+            "wpa2":  "#22c55e",
+            "wpa3":  "#38bdf8",
+        }
+        wfg = folium.FeatureGroup(name="📡 WiGLE Signals", show=True)
+        _wifi_rows = _wigle_nets[_wigle_nets["type"] == "wifi"]
+        for _, wrow in _wifi_rows.iterrows():
+            enc = str(wrow.get("encryption", "")).lower()
+            color = _enc_hex.get(enc, "#64748b")
+            folium.CircleMarker(
+                location=[wrow["trilat"], wrow["trilong"]],
+                radius=3,
+                color=color,
+                fill=True,
+                fill_color=color,
+                fill_opacity=0.7,
+                weight=1,
+                tooltip=folium.Tooltip(
+                    f"WiFi · {wrow.get('ssid','?')} · {enc.upper()} · {wrow.get('near_camera','')}",
+                    sticky=False,
+                ),
+            ).add_to(wfg)
+        wfg.add_to(m)
+
     # Density heatmap underneath all markers
     heat_data = [
         [r["latitude"], r["longitude"], weight_map.get(r["staleness_status"], 1)]
@@ -945,6 +1043,271 @@ def _render_file_legend(files_dict, active_names, show_ring_key=False):
         f'<div style="margin-top:0.5rem;padding:0.3rem 0;display:flex;flex-wrap:wrap;align-items:center">{swatches}{ring_key}</div>',
         unsafe_allow_html=True,
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SELECTOR VIEW
+# Query wigle_networks by field/value, apply temporal filter, show co-location.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def render_selector_view():
+    from modules.selector import query_selector, apply_temporal_filter, find_collocated, SELECTOR_FIELDS
+    import datetime
+
+    st.markdown('<div class="section-label">Selector Tracking</div>', unsafe_allow_html=True)
+
+    nets = st.session_state.get("wigle_networks")
+    if nets is None or nets.empty:
+        st.info("No WiGLE data loaded. Enable the WiGLE layer in the sidebar and click Fetch / Refresh WiGLE.")
+        return
+
+    # ── Selector input ────────────────────────────────────────────────────────
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        sel_field = st.selectbox("Field", SELECTOR_FIELDS, key="sel_field")
+    with col2:
+        sel_value = st.text_input("Selector value (partial match)", key="sel_value",
+                                  placeholder="e.g. xfinitywifi, AA:BB:CC, open")
+
+    # ── Temporal filter ───────────────────────────────────────────────────────
+    try:
+        dates = pd.to_datetime(nets["lasttime"], errors="coerce").dropna()
+        min_date = dates.min().date()
+        max_date = dates.max().date()
+    except Exception:
+        min_date = datetime.date(2018, 1, 1)
+        max_date = datetime.date.today()
+
+    date_range = st.slider(
+        "Observation date range",
+        min_value=min_date,
+        max_value=max_date,
+        value=(min_date, max_date),
+        key="sel_date_range",
+    )
+
+    if not sel_value.strip():
+        st.caption("Enter a selector value above to filter observations.")
+        return
+
+    # ── Query + filter ────────────────────────────────────────────────────────
+    filtered = query_selector(nets, field=sel_field, value=sel_value)
+    filtered = apply_temporal_filter(filtered, date_range[0], date_range[1])
+
+    st.markdown(
+        f'<div class="section-label">{len(filtered)} observations matched</div>',
+        unsafe_allow_html=True,
+    )
+
+    if filtered.empty:
+        st.info("No observations match this selector and date range.")
+        return
+
+    # ── Globe ─────────────────────────────────────────────────────────────────
+    _enc_colors = {
+        "open": "#ef4444", "wep": "#f97316", "wpa": "#eab308",
+        "wpa2": "#22c55e", "wpa3": "#38bdf8",
+    }
+    fig = go.Figure()
+    fig.add_trace(go.Scattergeo(
+        lat=filtered["trilat"],
+        lon=filtered["trilong"],
+        mode="markers",
+        name=f"{sel_field}:{sel_value}",
+        marker=dict(
+            size=7, opacity=0.85,
+            color=[_enc_colors.get(str(e).lower(), "#a78bfa") for e in filtered["encryption"]],
+            line=dict(width=1, color="#ffffff"),
+        ),
+        hovertemplate=(
+            "<b>%{customdata[0]}</b><br>"
+            "Enc: %{customdata[1]}<br>"
+            "RSSI: %{customdata[2]} dBm<br>"
+            "Last seen: %{customdata[3]}<br>"
+            "Near: %{customdata[4]}<extra></extra>"
+        ),
+        customdata=filtered[["ssid", "encryption", "bestrssi", "lasttime", "near_camera"]].values,
+    ))
+    fig.update_geos(
+        projection_type="natural earth",
+        showland=True, landcolor="#1e293b",
+        showocean=True, oceancolor="#0f172a",
+        showcountries=True, countrycolor="#334155",
+        showcoastlines=True, coastlinecolor="#475569",
+        showframe=False, bgcolor="rgba(0,0,0,0)",
+    )
+    fig.update_layout(
+        height=420, margin=dict(l=0, r=0, t=0, b=0),
+        paper_bgcolor="rgba(0,0,0,0)",
+        legend=dict(font=dict(color="#94a3b8"), bgcolor="rgba(15,23,42,0.75)"),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # ── Co-location table ─────────────────────────────────────────────────────
+    coloc = find_collocated(filtered, nets)
+    if not coloc.empty:
+        st.markdown('<div class="section-label">Co-located Networks</div>', unsafe_allow_html=True)
+        st.caption("Other networks observed within ~1 km of selector observations.")
+        display_cols = [c for c in ["netid", "ssid", "encryption", "type", "coloc_count", "near_camera"] if c in coloc.columns]
+        st.dataframe(coloc[display_cols].head(50), use_container_width=True, hide_index=True)
+
+    # ── Nearby Exposed Devices (Shodan) ───────────────────────────────────────
+    with st.expander("Nearby Exposed Devices (Shodan)", expanded=False):
+        if st.button("Query Shodan", key="shodan_query_btn"):
+            from modules.shodan import shodan_search_near
+            _s_mock = st.session_state.get("shodan_mock", True)
+            _s_key  = st.session_state.get("shodan_api_key", "")
+            _s_lat  = float(filtered["trilat"].mean())
+            _s_lon  = float(filtered["trilong"].mean())
+            with st.spinner("Querying Shodan…"):
+                shodan_df = shodan_search_near(_s_lat, _s_lon, 1.0, _s_key, limit=20, mock=_s_mock)
+            if shodan_df.empty:
+                st.info("No Shodan devices found near these observations.")
+            else:
+                st.session_state._last_shodan_df = shodan_df
+                st.caption(f"{len(shodan_df)} device(s) found within ~1 km of observation centroid.")
+                display_cols = [c for c in ["ip", "ports", "org", "product", "country"] if c in shodan_df.columns]
+                st.dataframe(shodan_df[display_cols], use_container_width=True, hide_index=True)
+        else:
+            st.caption("Click 'Query Shodan' to search for exposed devices near selector observations.")
+
+    # ── Nearby Points of Interest (OSM) ───────────────────────────────────────
+    with st.expander("Nearby Points of Interest (OSM)", expanded=False):
+        if st.button("Query OSM", key="osm_query_btn"):
+            from modules.osm import overpass_pois
+            _o_lat = float(filtered["trilat"].mean())
+            _o_lon = float(filtered["trilong"].mean())
+            with st.spinner("Querying Overpass API…"):
+                osm_df = overpass_pois(_o_lat, _o_lon, radius_m=500)
+            if osm_df.empty:
+                st.info("No POIs found near these observations.")
+            else:
+                st.session_state._last_osm_df = osm_df
+                st.caption(f"{len(osm_df)} POI(s) found within 500 m of observation centroid.")
+                display_cols = [c for c in ["name", "amenity", "lat", "lon"] if c in osm_df.columns]
+                st.dataframe(osm_df[display_cols], use_container_width=True, hide_index=True)
+        else:
+            st.caption("Click 'Query OSM' to find nearby points of interest.")
+
+    # ── Telegram Intelligence ─────────────────────────────────────────────────
+    with st.expander("Telegram Intelligence", expanded=False):
+        from modules.telegram import DEFAULT_CHANNELS
+        default_ch = ", ".join(DEFAULT_CHANNELS)
+        tg_channels_input = st.text_input(
+            "Channels (comma-separated)",
+            value=default_ch,
+            key="tg_channels_input",
+        )
+        if st.button("Search Telegram", key="tg_search_btn"):
+            from modules.telegram import search_selector_in_channels
+            _tg_channels = [c.strip() for c in tg_channels_input.split(",") if c.strip()]
+            with st.spinner("Searching Telegram channels…"):
+                tg_df = search_selector_in_channels(sel_value, channels=_tg_channels)
+            if tg_df.empty:
+                st.info("No Telegram mentions found for this selector.")
+            else:
+                st.session_state._last_tg_df = tg_df
+                st.caption(f"{len(tg_df)} mention(s) found across {tg_df['channel'].nunique()} channel(s).")
+                display_cols = [c for c in ["channel", "date", "text", "url"] if c in tg_df.columns]
+                st.dataframe(tg_df[display_cols], use_container_width=True, hide_index=True)
+        else:
+            st.caption("Click 'Search Telegram' to search public channels for this selector.")
+
+    # ── Movement Analysis ─────────────────────────────────────────────────────
+    with st.expander("Movement Analysis", expanded=False):
+        from modules.velocity import compute_velocity, ANOMALY_THRESHOLD_KMH
+        _threshold = st.slider(
+            "Anomaly threshold (km/h)",
+            min_value=100, max_value=2000,
+            value=int(ANOMALY_THRESHOLD_KMH),
+            step=50,
+            key="vel_threshold",
+            help="Speeds above this value are flagged as physically implausible for a fixed device.",
+        )
+        _vel_df = compute_velocity(filtered)
+        _vel_df["is_anomaly"] = _vel_df["speed_kmh"] > _threshold
+        _anomaly_count = int(_vel_df["is_anomaly"].sum())
+        if _anomaly_count > 0:
+            st.caption(f"{_anomaly_count} anomalous movement(s) detected (> {_threshold} km/h).")
+        else:
+            st.caption("No anomalous movements detected.")
+        _vel_display_cols = [c for c in ["lasttime", "trilat", "trilong", "distance_km", "time_delta_h", "speed_kmh", "is_anomaly"] if c in _vel_df.columns]
+        _max_speed = float(_vel_df["speed_kmh"].max()) if not _vel_df.empty else float(_threshold)
+        st.dataframe(
+            _vel_df[_vel_display_cols],
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "speed_kmh": st.column_config.ProgressColumn(
+                    "speed_kmh",
+                    help="Movement speed in km/h",
+                    min_value=0,
+                    max_value=max(_max_speed, float(_threshold)),
+                    format="%.0f km/h",
+                ),
+            },
+        )
+
+    # ── Entity Co-occurrence ──────────────────────────────────────────────────
+    with st.expander("Entity Co-occurrence", expanded=False):
+        if coloc.empty:
+            st.info("No co-located entities found near this selector.")
+        else:
+            st.caption("Co-occurrence count = times observed within ~1 km of selector. Higher = stronger association.")
+            _coloc_sorted = coloc.sort_values("coloc_count", ascending=False) if "coloc_count" in coloc.columns else coloc
+            _coloc_display = [c for c in ["netid", "ssid", "type", "encryption", "coloc_count", "near_camera"] if c in _coloc_sorted.columns]
+            st.dataframe(_coloc_sorted[_coloc_display].head(50), use_container_width=True, hide_index=True)
+
+    # ── Observation table ─────────────────────────────────────────────────────
+    with st.expander(f"Raw observations ({len(filtered)})", expanded=False):
+        display_cols = [c for c in ["trilat", "trilong", "ssid", "netid", "encryption", "lasttime", "bestrssi", "near_camera"] if c in filtered.columns]
+        st.dataframe(filtered[display_cols], use_container_width=True, hide_index=True)
+
+    # ── Export Intelligence Report ────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("**Export Intelligence Report**")
+    _export_date = pd.Timestamp.now().strftime("%Y%m%d")
+    _safe_selector = "".join(c if c.isalnum() else "_" for c in sel_value)[:32]
+
+    from modules.report import generate_html_report, generate_csv_export
+    from modules.velocity import compute_velocity
+
+    _exp_shodan = st.session_state.get("_last_shodan_df")
+    _exp_osm    = st.session_state.get("_last_osm_df")
+    _exp_tg     = st.session_state.get("_last_tg_df")
+    _exp_vel    = compute_velocity(filtered)
+
+    _col_html, _col_csv = st.columns(2)
+    with _col_html:
+        _html_report = generate_html_report(
+            selector_field=sel_field,
+            selector_value=sel_value,
+            filtered_df=filtered,
+            coloc_df=coloc,
+            vel_df=_exp_vel,
+            shodan_df=_exp_shodan,
+            osm_df=_exp_osm,
+            tg_df=_exp_tg,
+        )
+        st.download_button(
+            label="Download HTML Report",
+            data=_html_report.encode("utf-8"),
+            file_name=f"wraith_intel_{_safe_selector}_{_export_date}.html",
+            mime="text/html",
+            use_container_width=True,
+            key="export_html_btn",
+        )
+    with _col_csv:
+        _csv_data = generate_csv_export(filtered)
+        st.download_button(
+            label="Download CSV",
+            data=_csv_data.encode("utf-8"),
+            file_name=f"wraith_obs_{_safe_selector}_{_export_date}.csv",
+            mime="text/csv",
+            use_container_width=True,
+            key="export_csv_btn",
+        )
+    st.caption("HTML report includes all enrichment data loaded in this session. CSV contains raw observations only.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1648,7 +2011,7 @@ def render_sidebar(files_dict):
 
     # ── Primary navigation (View) ─────────────────────────────────────────────
     st.sidebar.markdown('<div class="section-label">View</div>', unsafe_allow_html=True)
-    view_options = ["Globe", "Flat Map", "Heatmap", "Data Table", "Conflicts", "Alerts & Export"]
+    view_options = ["Globe", "Flat Map", "Heatmap", "Selector", "Data Table", "Conflicts", "Alerts & Export"]
     if st.session_state.admin_metrics_ok:
         view_options.append("Metrics")
     view = st.sidebar.radio(
@@ -1705,6 +2068,73 @@ def render_sidebar(files_dict):
             st.session_state.files.pop(_n, None)
         st.rerun()
 
+    st.sidebar.markdown("---")
+
+    # ── WiGLE Signals ─────────────────────────────────────────────────────────
+    st.sidebar.markdown('<div class="section-label">WiGLE Signals</div>', unsafe_allow_html=True)
+    wigle_enabled = st.sidebar.toggle(
+        "Enable WiGLE layer",
+        value=st.session_state.wigle_enabled,
+        key="wigle_toggle",
+    )
+    st.session_state.wigle_enabled = wigle_enabled
+
+    if wigle_enabled:
+        wigle_mock = st.sidebar.checkbox("Use mock data (no credentials)", value=True, key="wigle_mock")
+        if not wigle_mock:
+            wigle_user  = st.sidebar.text_input("WiGLE Username", key="wigle_user")
+            wigle_token = st.sidebar.text_input("WiGLE API Token", type="password", key="wigle_token")
+            st.sidebar.caption("API token from wigle.net/account — not your password.")
+        else:
+            wigle_user  = ""
+            wigle_token = ""
+        wigle_radius    = st.sidebar.slider("Search radius (°)", 0.005, 0.05, 0.01, 0.005, key="wigle_radius",
+                                            help="~0.01° ≈ 1.1 km")
+        wigle_cam_limit = st.sidebar.slider("Max cameras to query", 1, 50, 10, key="wigle_cam_limit")
+
+        if st.sidebar.button("Fetch / Refresh WiGLE", use_container_width=True, key="wigle_fetch"):
+            from modules.wigle import generate_mock_networks, cached_bbox_search, clear_session_cache
+            import pandas as _pd
+            clear_session_cache()
+            all_frames = []
+            active_dfs = [files_dict[n]["df"] for n in files_dict]
+            if active_dfs:
+                cam_df = _pd.concat(active_dfs, ignore_index=True).head(wigle_cam_limit)
+                if wigle_mock:
+                    st.session_state.wigle_networks = generate_mock_networks(cam_df)
+                else:
+                    if not wigle_user or not wigle_token:
+                        st.sidebar.error("Enter WiGLE username and token, or enable mock mode.")
+                    else:
+                        progress = st.sidebar.progress(0, text="Querying WiGLE…")
+                        for i, (_, cam) in enumerate(cam_df.iterrows()):
+                            try:
+                                df_net = cached_bbox_search(
+                                    cam["latitude"], cam["longitude"],
+                                    wigle_radius, wigle_user, wigle_token,
+                                    near_camera=cam.get("location_label", ""),
+                                )
+                                all_frames.append(df_net)
+                            except RuntimeError as exc:
+                                st.sidebar.warning(f"{cam.get('location_label','cam')}: {exc}")
+                            progress.progress((i + 1) / len(cam_df), text=f"Queried {i+1}/{len(cam_df)}")
+                        progress.empty()
+                        if all_frames:
+                            st.session_state.wigle_networks = _pd.concat(all_frames, ignore_index=True)
+            else:
+                st.sidebar.warning("Load camera data first before fetching WiGLE signals.")
+        st.sidebar.markdown("---")
+
+    # ── Shodan Enrichment ─────────────────────────────────────────────────────
+    st.sidebar.markdown("**SHODAN ENRICHMENT**")
+    shodan_mock = st.sidebar.checkbox("Use mock Shodan data", value=st.session_state.shodan_mock, key="shodan_mock_checkbox")
+    st.session_state.shodan_mock = shodan_mock
+    if not shodan_mock:
+        shodan_key = st.sidebar.text_input("Shodan API Key", type="password", key="shodan_api_key_input")
+        st.session_state.shodan_api_key = shodan_key
+        st.sidebar.caption("Free API key from shodan.io/account")
+    else:
+        st.session_state.shodan_api_key = ""
     st.sidebar.markdown("---")
 
     # ── Advanced controls (collapsed on phone) ───────────────────────────────
@@ -2097,6 +2527,9 @@ def main():
             heat_radius=heat_radius,
             show_minimap=heat_show_minimap,
         )
+
+    elif view == "Selector":
+        render_selector_view()
 
     elif view == "Data Table":
         st.markdown('<div class="section-label">Data Table</div>', unsafe_allow_html=True)

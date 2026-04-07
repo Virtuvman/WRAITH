@@ -1,0 +1,25 @@
+{
+  "name": "WRAITH-WiGLE",
+  "version": "0.2.0",
+  "milestone": {
+    "name": "v0.2 Reputation & Intel Export",
+    "version": "0.2.0",
+    "status": "complete"
+  },
+  "phase": {
+    "number": 7,
+    "name": "ip-reputation",
+    "status": "complete"
+  },
+  "loop": {
+    "plan": null,
+    "position": "IDLE"
+  },
+  "timestamps": {
+    "created_at": "2026-04-04T00:00:00Z",
+    "updated_at": "2026-04-06T00:00:00Z"
+  },
+  "satellite": {
+    "groom": true
+  }
+}
