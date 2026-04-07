@@ -2,26 +2,20 @@
 
 ## Current Milestone
 
-**v0.2 — Intel Export** (v0.2.0)
-Status: Complete
-Phases: 1 of 1 complete
+No active milestone. Run `/paul:milestone` to define v0.3 scope.
 
-## Phases
+## Next Milestone
 
-| Phase | Name | Plans | Status | Completed |
-|-------|------|-------|--------|-----------|
-| 7 | Selector Intel Report Export | 2 | Complete | 2026-04-06 |
+Run `/paul:discuss-milestone` or `/paul:milestone` to define.
 
-### Phase 7: Selector Intel Report Export
-
-Focus: One-click HTML report generated from the current Selector view state — captures selector query, observations table, co-location, velocity summary, entity co-occurrence, and anomaly flags into a self-contained shareable document. Plus CSV export of raw observations. No API keys. No new external dependencies.
-Plans: 2 (07-01: report engine, 07-02: UI export buttons)
+Candidate scope:
+- IP Reputation layer (AbuseIPDB + GreyNoise + Censys) — when API keys available
+- WRAITH-Sentinel concept → `/seed` for scoping
+- UX polish / operator workflow hardening
 
 ---
 
 ## Deferred (awaiting API strategy)
-
-The following phases are defined but frozen until API keys are in hand and operationally validated:
 
 | Phase | Name | Dependency |
 |-------|------|------------|
@@ -31,6 +25,15 @@ The following phases are defined but frozen until API keys are in hand and opera
 ---
 
 ## Completed Milestones
+
+<details>
+<summary>v0.2 Intel Export — 2026-04-06 (1 phase) ✅</summary>
+
+| Phase | Name | Plans | Completed |
+|-------|------|-------|-----------|
+| 7 | Selector Intel Report Export | 2 | 2026-04-06 |
+
+</details>
 
 <details>
 <summary>v0.1 WiGLE Core — 2026-04-06 (6 phases) ✅ MVP</summary>
@@ -48,4 +51,4 @@ The following phases are defined but frozen until API keys are in hand and opera
 
 ---
 *Roadmap created: 2026-04-04*
-*Last updated: 2026-04-06 — v0.2 scoped to Intel Export only; reputation phases deferred*
+*Last updated: 2026-04-06 — v0.2 complete, awaiting v0.3 definition*

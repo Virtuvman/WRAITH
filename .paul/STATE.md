@@ -4,27 +4,26 @@
 
 See: .paul/PROJECT.md (updated 2026-04-06)
 
-**Core value:** Track selector movement and patterns (IP, SSID, BSSID, username, network affiliation) to reveal ISR vulnerabilities
-**Current focus:** v0.2 Intel Export complete — awaiting next milestone definition
+**Core value:** Track selector movement and patterns (IP, SSID, BSSID, username, network affiliation) to reveal ISR vulnerabilities and package findings into shareable intelligence reports
+**Current focus:** Awaiting next milestone — v0.2 complete
 
 ## Current Position
 
-Milestone: v0.2 Intel Export — **COMPLETE**
-Phase: 7 of 7 (Selector Intel Report Export) — Complete (2 of 2 plans complete)
-Plan: 07-02 complete
-Status: Phase 7 unified — v0.2 milestone complete
-Last activity: 2026-04-06 — Completed Plan 07-02 UNIFY
+Milestone: Awaiting next milestone
+Phase: None active
+Plan: None
+Status: Milestone v0.2 Intel Export complete — ready for next
+Last activity: 2026-04-06 — Milestone v0.2 completed
 
 Progress:
-- v0.2 Intel Export: [██████████] 100%
-- Phase 7: [██████████] 100%
+- v0.2 Intel Export: [██████████] 100% ✓
 
 ## Loop Position
 
 Current loop state:
 ```
 PLAN ──▶ APPLY ──▶ UNIFY
-  ✓        ✓        ✓     [Phase 7 complete — v0.2 milestone complete]
+  ○        ○        ○     [Milestone complete — ready for next]
 ```
 
 ## Accumulated Context
@@ -50,15 +49,15 @@ PLAN ──▶ APPLY ──▶ UNIFY
 
 | Blocker | Impact | Resolution Path |
 |---------|--------|-----------------|
-| WiGLE free-tier rate limits | Limits cameras queried per session | Implement request caching + batching in Phase 1 |
-| WiGLE API terms acceptance | Blocks live queries until accepted on wigle.net/account | User action required before Phase 1 testing |
+| WiGLE free-tier rate limits | Limits cameras queried per session | Implement request caching + batching |
+| WiGLE API terms acceptance | Blocks live queries until accepted on wigle.net/account | User action required |
 
 ## Session Continuity
 
 Last session: 2026-04-06
-Stopped at: v0.2 milestone complete — all phases done
-Next action: /paul:complete-milestone to formally close v0.2, OR /paul:milestone to define v0.3 scope
-Resume file: .paul/ROADMAP.md
+Stopped at: Milestone v0.2 complete
+Next action: /paul:milestone to define v0.3, OR push to GitHub, OR /seed for WRAITH-Sentinel
+Resume file: .paul/MILESTONES.md
 
 ---
 *STATE.md — Updated after every significant action*
