@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m py_compile modules/telegram.py)",
+      "Bash(python -m py_compile modules/velocity.py)",
+      "Skill(paul:milestone)",
+      "Skill(paul:milestone:*)",
+      "Bash(python -c \"import jinja2; print\\('jinja2 available'\\)\")",
+      "Bash(gh auth:*)",
+      "Skill(paul:complete-milestone)",
+      "Skill(paul:complete-milestone:*)"
+    ]
+  }
+}
