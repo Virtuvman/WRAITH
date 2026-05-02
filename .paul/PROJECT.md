@@ -36,7 +36,9 @@ Users can track the movement and define patterns of selector information — IP 
 
 ### Active (In Progress)
 
-None — awaiting next milestone definition.
+- [x] RAVEN Ingest Engine — Shodan/FOFA JSON parser, unified schema, camera classifier, screenshot extractor — Phase 8 complete
+- [ ] Public Feed Integration — municipal traffic APIs + YouTube thumbnails — Phase 9
+- [ ] RAVEN Map View — Folium camera pin map with popup thumbnails — Phase 10
 
 ### Planned (Deferred)
 

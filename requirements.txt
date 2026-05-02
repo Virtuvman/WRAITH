@@ -17,6 +17,9 @@ streamlit-folium>=0.20.0
 # HTTP / API clients
 requests>=2.31.0
 
+# Image processing (optional — enables thumbnail resize in RAVEN media view)
+Pillow>=10.0.0
+
 # Geospatial
 mgrs>=1.4.0
 

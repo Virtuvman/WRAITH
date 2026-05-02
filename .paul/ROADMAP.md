@@ -4,20 +4,20 @@
 
 **v0.3 — RAVEN Camera Intelligence** (v0.3.0)
 Status: In Progress
-Phases: 0 of 3 complete
+Phases: 1 of 3 complete
 
 ## Phases
 
 | Phase | Name | Plans | Status | Completed |
 |-------|------|-------|--------|-----------|
-| 8 | RAVEN Ingest Engine | TBD | Planning | - |
+| 8 | RAVEN Ingest Engine | 2 | Complete | 2026-05-02 |
 | 9 | Public Feed Integration | TBD | Not started | - |
 | 10 | RAVEN Map View | TBD | Not started | - |
 
-### Phase 8: RAVEN Ingest Engine
+### Phase 8: RAVEN Ingest Engine ✅
 
 Focus: Parse Shodan/FOFA raw JSON files containing base64 screenshot fields. Extract device metadata (IP, lat/lon, port, product, org, tags, timestamp) and base64 image data into a unified RAVEN schema. Camera-type classifier filters for Hikvision, Dahua, Axis, RTSP-tagged, and traffic-cam devices. Mock data generator with realistic camera device records including embedded base64 thumbnails.
-Plans: TBD (defined during /paul:plan)
+Plans: 2 (08-01: schema + parsers + classifier, 08-02: media + popup HTML + screenshot extractor)
 
 ### Phase 9: Public Feed Integration
 
