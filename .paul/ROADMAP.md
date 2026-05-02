@@ -2,16 +2,32 @@
 
 ## Current Milestone
 
-No active milestone. Run `/paul:milestone` to define v0.3 scope.
+**v0.3 — RAVEN Camera Intelligence** (v0.3.0)
+Status: In Progress
+Phases: 0 of 3 complete
 
-## Next Milestone
+## Phases
 
-Run `/paul:discuss-milestone` or `/paul:milestone` to define.
+| Phase | Name | Plans | Status | Completed |
+|-------|------|-------|--------|-----------|
+| 8 | RAVEN Ingest Engine | TBD | Planning | - |
+| 9 | Public Feed Integration | TBD | Not started | - |
+| 10 | RAVEN Map View | TBD | Not started | - |
 
-Candidate scope:
-- IP Reputation layer (AbuseIPDB + GreyNoise + Censys) — when API keys available
-- WRAITH-Sentinel concept → `/seed` for scoping
-- UX polish / operator workflow hardening
+### Phase 8: RAVEN Ingest Engine
+
+Focus: Parse Shodan/FOFA raw JSON files containing base64 screenshot fields. Extract device metadata (IP, lat/lon, port, product, org, tags, timestamp) and base64 image data into a unified RAVEN schema. Camera-type classifier filters for Hikvision, Dahua, Axis, RTSP-tagged, and traffic-cam devices. Mock data generator with realistic camera device records including embedded base64 thumbnails.
+Plans: TBD (defined during /paul:plan)
+
+### Phase 9: Public Feed Integration
+
+Focus: Ingest live camera snapshots from open municipal traffic camera APIs (NYC DOT, Caltrans, WSDOT, Chicago) and YouTube public thumbnails via curated camera list. All sources normalize to the same RAVEN schema — lat/lon, label, image_b64, source, tags, timestamp. No new Python dependencies beyond requests (already installed).
+Plans: TBD (defined during /paul:plan)
+
+### Phase 10: RAVEN Map View
+
+Focus: New RAVEN view in app.py — Folium map with one pin per camera device, color-coded by source (Shodan/FOFA/municipal/YouTube). Click-to-open popup shows thumbnail image + device metadata. Sidebar filter by source, product type, and tags. KPI row: total devices, cameras with screenshots, municipal feeds loaded, countries represented.
+Plans: TBD (defined during /paul:plan)
 
 ---
 
@@ -19,8 +35,8 @@ Candidate scope:
 
 | Phase | Name | Dependency |
 |-------|------|------------|
-| 8 | IP Reputation Layer (AbuseIPDB + GreyNoise + Censys) | API keys required |
-| 9 | Reputation UI Wiring | Phase 8 prerequisite |
+| 11 | IP Reputation Layer (AbuseIPDB + GreyNoise + Censys) | API keys required |
+| 12 | Reputation UI Wiring | Phase 11 prerequisite |
 
 ---
 
@@ -51,4 +67,4 @@ Candidate scope:
 
 ---
 *Roadmap created: 2026-04-04*
-*Last updated: 2026-04-06 — v0.2 complete, awaiting v0.3 definition*
+*Last updated: 2026-05-02 — v0.3 RAVEN Camera Intelligence defined*

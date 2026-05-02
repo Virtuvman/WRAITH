@@ -1,15 +1,15 @@
 {
   "name": "WRAITH-WiGLE",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "milestone": {
-    "name": "v0.2 Reputation & Intel Export",
-    "version": "0.2.0",
-    "status": "complete"
+    "name": "v0.3 RAVEN Camera Intelligence",
+    "version": "0.3.0",
+    "status": "in_progress"
   },
   "phase": {
-    "number": 7,
-    "name": "ip-reputation",
-    "status": "complete"
+    "number": 8,
+    "name": "raven-ingest",
+    "status": "not_started"
   },
   "loop": {
     "plan": null,
@@ -17,7 +17,7 @@
   },
   "timestamps": {
     "created_at": "2026-04-04T00:00:00Z",
-    "updated_at": "2026-04-06T00:00:00Z"
+    "updated_at": "2026-05-02T00:00:00Z"
   },
   "satellite": {
     "groom": true
