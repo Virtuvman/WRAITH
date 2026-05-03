@@ -5,26 +5,26 @@
 See: .paul/PROJECT.md (updated 2026-05-02)
 
 **Core value:** Track selector movement and patterns across wireless observations, exposed devices, and live camera feeds — reveal ISR vulnerabilities, package findings into shareable intelligence reports
-**Current focus:** v0.3 RAVEN — Phase 8 complete, ready for Phase 9 (Public Feed Integration)
+**Current focus:** v0.3 RAVEN — Phase 10 complete. Milestone v0.3 RAVEN Camera Intelligence DONE.
 
 ## Current Position
 
-Milestone: v0.3 RAVEN Camera Intelligence
-Phase: 9 of 10 (Public Feed Integration) — Not started
-Plan: Not started
-Status: Phase 8 complete — ready to plan Phase 9
-Last activity: 2026-05-02 — Phase 8 UNIFY complete (both plans)
+Milestone: v0.3 RAVEN Camera Intelligence — COMPLETE
+Phase: 10 of 10 (RAVEN Map View) — Complete
+Plan: 10-02 complete
+Status: All phases delivered. Ready for next milestone.
+Last activity: 2026-05-03 — Phase 10 Plan 02 UNIFY complete
 
 Progress:
-- v0.3 RAVEN Camera Intelligence: [███░░░░░░░] 33%
-- Phase 9: [░░░░░░░░░░] 0%
+- v0.3 RAVEN Camera Intelligence: [██████████] 100%
+- Phase 10: [██████████] 100%
 
 ## Loop Position
 
 Current loop state:
 ```
 PLAN ──▶ APPLY ──▶ UNIFY
-  ✓        ✓        ✓     [Phase 8 complete — ready for Phase 9 PLAN]
+  ✓        ✓        ✓     [10-02 complete — milestone closed]
 ```
 
 ## Accumulated Context
@@ -45,6 +45,10 @@ PLAN ──▶ APPLY ──▶ UNIFY
 | Pillow optional with fallback | Phase 8-02 | Thumbnails work without Pillow, just unresized |
 | image_url passthrough — no HTTP fetch in raven_media | Phase 8-02 | Phase 9 fetches images; raven_media only embeds what it receives |
 | Screenshot filename: {ip_underscores}_{port}.png | Phase 8-02 | Consistent convention for extract_screenshots and manual drops |
+| CSV ingest added to Phase 9 | Phase 9-01 | load_raven_csv built before Phase 10 UI wiring — file-like object support means st.file_uploader drop-in |
+| fetch_csv_cameras scans data/*.csv by default | Phase 9-01 | Zero-config drop-file workflow; operator drops CSV in data/ and it auto-loads |
+| Inert shims for stale stub imports | Phase 10-01 | match_media/build_media_html replaced with passthrough shims; call sites untouched per user direction |
+| RAVEN early-return in main() | Phase 10-01 | Non-CSV views must early-return before CSV pipeline block (~line 2467); pattern for future views |
 
 ### Deferred Issues
 
@@ -58,13 +62,14 @@ PLAN ──▶ APPLY ──▶ UNIFY
 | Blocker | Impact | Resolution Path |
 |---------|--------|-----------------|
 | Folium 0.17.0 pin | Cannot upgrade folium | All RAVEN map work must test against pinned version |
+| YouTube video IDs in seed file | 12 of 15 entries use REPLACE_WITH_LIVE_ID placeholder | Operator must curate active stream IDs before live fetch |
 
 ## Session Continuity
 
-Last session: 2026-05-02
-Stopped at: Phase 8 complete — both plans done
-Next action: /paul:plan — Phase 9: Public Feed Integration
-Resume file: .paul/phases/08-raven-ingest/08-02-SUMMARY.md
+Last session: 2026-05-03
+Stopped at: Plan 10-02 complete — RAVEN source filter + file upload live
+Next action: Run /paul:milestone to open v0.4 or /seed for next feature direction
+Resume file: .paul/phases/10-raven-map-view/10-02-SUMMARY.md
 
 ---
 *STATE.md — Updated after every significant action*

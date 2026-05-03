@@ -59,6 +59,14 @@ except ImportError:
 # Runtime import is valid when running from this folder (e.g. `streamlit run app.py`).
 from modules.ingestion import load_csv  # pyright: ignore[reportMissingImports]
 from modules.coord_normalizer import describe_detection  # pyright: ignore[reportMissingImports]
+# Inert shims — stale stubs rendered inert; call sites unchanged
+def match_media(df): return df          # passthrough; no-op
+def build_media_html(row): return ""    # empty HTML; flat map popup unaffected
+
+from modules.raven_ingest import load_raven_file, load_raven_csv, generate_mock_raven, RAVEN_SCHEMA_COLUMNS
+from modules.raven_feeds import fetch_all_feeds
+from modules.raven_media import build_popup_html
+from modules.raven_matcher import tag_camera_type
 from modules.staleness import (  # pyright: ignore[reportMissingImports]
     STALENESS_ORDER,
     STALENESS_RING,
@@ -459,6 +467,14 @@ def init_session():
         st.session_state._last_osm_df = None
     if "_last_tg_df" not in st.session_state:
         st.session_state._last_tg_df = None
+    if "raven_df" not in st.session_state:
+        st.session_state.raven_df = None
+    if "raven_mock" not in st.session_state:
+        st.session_state.raven_mock = True
+    if "raven_uploaded_df" not in st.session_state:
+        st.session_state.raven_uploaded_df = pd.DataFrame(columns=RAVEN_SCHEMA_COLUMNS)
+    if "raven_uploaded_names" not in st.session_state:
+        st.session_state.raven_uploaded_names = set()
 
 
 def require_pilot_access() -> None:
@@ -572,6 +588,7 @@ def render_globe(files_dict, active_names, status_filter, auto_rotate=False):
         f"IP: {r.get('ip','N/A')}<br>"
         f"Model: {r.get('model','Unknown')}<br>"
         f"Last Seen: {r.get('last_seen','')}<br>"
+        f"Media: {'🟢 Quick View' if r.get('has_media', False) else '🔴 None'}<br>"
         f"<b>{r['staleness_status']}</b> ({r['age_months']} mo)<br>"
         f"Country: {r.get('country','')}"
     ), axis=1)
@@ -763,6 +780,7 @@ def render_flat_map(files_dict, active_names, status_filter):
         f"IP: {r.get('ip','N/A')}<br>"
         f"Model: {r.get('model','Unknown')}<br>"
         f"Last Seen: {r.get('last_seen','')}<br>"
+        f"Media: {'🟢 Quick View' if r.get('has_media', False) else '🔴 None'}<br>"
         f"<b>{r['staleness_status']}</b> ({r['age_months']} mo)"
     ), axis=1)
 
@@ -924,12 +942,15 @@ def render_heatmap(
 
         for _, row in df.iterrows():
             ring = STALENESS_RING[row["staleness_status"]]
+            media_html = build_media_html(row)
+            media_status = "🟢 Quick View Available" if row.get("has_media", False) else "🔴 No Media"
+            media_fill = "#22c55e" if row.get("has_media", False) else "#ef4444"
             folium.CircleMarker(
                 location=[row["latitude"], row["longitude"]],
                 radius=marker_radius,
                 color=ring["color"],        # ring = staleness
                 fill=True,
-                fill_color=fcolor,          # fill = file/region color
+                fill_color=media_fill,          # fill = file/region color
                 fill_opacity=0.82,
                 weight=ring["width"],
                 popup=folium.Popup(
@@ -944,6 +965,8 @@ def render_heatmap(
                     f"Org: {row.get('org','N/A')}<br>"
                     f"Coords: {row.get('latitude','')}, {row.get('longitude','')}<br>"
                     f"Last Seen: {row.get('last_seen','')}<br>"
+                    f"Media: {media_status}<br>"
+                    f"{media_html}<br>"
                     f"<b style='color:{ring['color']}'>"
                     f"{row['staleness_status']}</b> ({row['age_months']} mo)"
                     f"</div>",
@@ -1397,6 +1420,7 @@ def _build_metrics_context(files_dict, filtered_dict, active_names, status_filte
     for name, fd in files_dict.items():
         df_raw = fd.get("df_raw")
         df_clean = fd.get("df")
+        df_clean = match_media(df_clean)
         errors = fd.get("errors", [])
         detection_info = fd.get("detection_info", {})
 
@@ -2011,7 +2035,7 @@ def render_sidebar(files_dict):
 
     # ── Primary navigation (View) ─────────────────────────────────────────────
     st.sidebar.markdown('<div class="section-label">View</div>', unsafe_allow_html=True)
-    view_options = ["Globe", "Flat Map", "Heatmap", "Selector", "Data Table", "Conflicts", "Alerts & Export"]
+    view_options = ["Globe", "Flat Map", "Heatmap", "Selector", "RAVEN", "Data Table", "Conflicts", "Alerts & Export"]
     if st.session_state.admin_metrics_ok:
         view_options.append("Metrics")
     view = st.sidebar.radio(
@@ -2223,6 +2247,187 @@ def render_sidebar(files_dict):
 # ─────────────────────────────────────────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────────────────────────────────────────
+# RAVEN Map View
+# ─────────────────────────────────────────────────────────────────────────────
+
+_RAVEN_SOURCE_COLORS = {
+    "shodan":    "#ef4444",
+    "fofa":      "#f97316",
+    "municipal": "#3b82f6",
+    "youtube":   "#a855f7",
+    "csv":       "#22c55e",
+}
+_RAVEN_DEFAULT_COLOR = "#94a3b8"
+
+
+def _load_raven_data(mock: bool = True) -> pd.DataFrame:
+    if mock:
+        combined = fetch_all_feeds(mock=True)
+        shodan_mock = generate_mock_raven(n=10)
+        df = pd.concat([combined, shodan_mock], ignore_index=True)
+    else:
+        frames = []
+        for p in sorted(Path("data").glob("*.json")):
+            if p.name == "youtube_cameras.json":
+                continue
+            frames.append(load_raven_file(str(p)))
+        frames.append(fetch_all_feeds(mock=False))
+        non_empty = [f for f in frames if not f.empty]
+        if not non_empty:
+            return pd.DataFrame(columns=RAVEN_SCHEMA_COLUMNS)
+        df = pd.concat(non_empty, ignore_index=True)
+    return tag_camera_type(df)
+
+
+def render_raven_view():
+    st.markdown('<div class="section-label">RAVEN — Camera Intelligence</div>',
+                unsafe_allow_html=True)
+
+    col_mock, col_load = st.columns([3, 1])
+    with col_mock:
+        mock = st.toggle(
+            "Mock data (no network / API calls)",
+            value=st.session_state.raven_mock,
+            key="raven_mock_toggle",
+        )
+        st.session_state.raven_mock = mock
+    with col_load:
+        if st.button("Load RAVEN Data", use_container_width=True, key="raven_load_btn"):
+            with st.spinner("Loading RAVEN feeds…"):
+                st.session_state.raven_df = _load_raven_data(mock=mock)
+
+    raven_df = st.session_state.raven_df
+
+    # ── File uploader ──────────────────────────────────────────────────────────
+    with st.expander("Upload camera data (CSV or Shodan/FOFA JSON)", expanded=False):
+        up_files = st.file_uploader(
+            "Select files",
+            type=["csv", "json"],
+            accept_multiple_files=True,
+            key="raven_file_uploader",
+        )
+        if up_files:
+            new_frames = []
+            for f in up_files:
+                if f.name not in st.session_state.raven_uploaded_names:
+                    if f.name.endswith(".csv"):
+                        df_up = load_raven_csv(f)
+                        df_up["source"] = df_up["source"].where(df_up["source"].notna(), "csv")
+                    else:
+                        df_up = load_raven_file(f)
+                    if not df_up.empty:
+                        new_frames.append(df_up)
+                        st.session_state.raven_uploaded_names.add(f.name)
+
+            if new_frames:
+                existing = st.session_state.raven_uploaded_df
+                combined = pd.concat([existing] + new_frames, ignore_index=True)
+                st.session_state.raven_uploaded_df = combined[RAVEN_SCHEMA_COLUMNS]
+                st.success(f"Added {sum(len(fr) for fr in new_frames)} records from {len(new_frames)} file(s).")
+
+        if not st.session_state.raven_uploaded_df.empty:
+            c1, c2 = st.columns([4, 1])
+            with c1:
+                st.caption(f"{len(st.session_state.raven_uploaded_df)} records from uploaded files")
+            with c2:
+                if st.button("Clear uploads", key="raven_clear_uploads"):
+                    st.session_state.raven_uploaded_df = pd.DataFrame(columns=RAVEN_SCHEMA_COLUMNS)
+                    st.session_state.raven_uploaded_names = set()
+                    st.rerun()
+
+    if raven_df is None or raven_df.empty:
+        st.info(
+            "No RAVEN data loaded. Click **Load RAVEN Data** to pull "
+            "municipal feeds, YouTube thumbnails, and any Shodan/CSV files in data/."
+        )
+        return
+
+    # ── Combine loaded + uploaded data ─────────────────────────────────────────
+    uploaded_df = st.session_state.raven_uploaded_df
+    frames_to_show = [df for df in [raven_df, uploaded_df] if df is not None and not df.empty]
+    display_df = pd.concat(frames_to_show, ignore_index=True) if frames_to_show else raven_df
+
+    # ── Source filter ──────────────────────────────────────────────────────────
+    all_sources = sorted(display_df["source"].dropna().unique().tolist())
+    selected_sources = st.multiselect(
+        "Filter by source",
+        options=all_sources,
+        default=all_sources,
+        key="raven_source_filter",
+    )
+    filtered_df = (
+        display_df[display_df["source"].isin(selected_sources)]
+        if selected_sources else display_df
+    )
+
+    # ── KPI row ────────────────────────────────────────────────────────────────
+    total_pins = len(filtered_df)
+    with_img   = int(filtered_df["image_b64"].notna().sum())
+    sources    = sorted(filtered_df["source"].dropna().unique())
+    countries: set = set()
+    for meta in filtered_df["metadata"].dropna():
+        if isinstance(meta, dict) and meta.get("country"):
+            countries.add(meta["country"])
+
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Camera Pins", total_pins)
+    k2.metric("With Screenshot", with_img)
+    k3.metric("Sources", len(sources))
+    k4.metric("Countries", len(countries) if countries else "—")
+
+    legend_parts = " &nbsp; ".join(
+        f'<span style="color:{_RAVEN_SOURCE_COLORS.get(s, _RAVEN_DEFAULT_COLOR)}">●</span> {s}'
+        for s in sources
+    )
+    st.markdown(
+        f'<div style="font-size:0.8rem;opacity:0.75;margin-bottom:0.5rem">{legend_parts}</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── Folium map ─────────────────────────────────────────────────────────────
+    if not FOLIUM_AVAILABLE:
+        st.warning("folium not installed — cannot render RAVEN map.")
+        return
+
+    valid = filtered_df.dropna(subset=["lat", "lon"])
+    if valid.empty:
+        st.warning("No records with valid lat/lon coordinates.")
+        return
+
+    center_lat = float(valid["lat"].median())
+    center_lon = float(valid["lon"].median())
+
+    m = folium.Map(
+        location=[center_lat, center_lon],
+        zoom_start=4,
+        tiles="CartoDB dark_matter",
+        attr="CartoDB",
+    )
+
+    for _, row in valid.iterrows():
+        src   = str(row.get("source") or "")
+        color = _RAVEN_SOURCE_COLORS.get(src, _RAVEN_DEFAULT_COLOR)
+        popup_html = build_popup_html(row.to_dict())
+
+        folium.CircleMarker(
+            location=[float(row["lat"]), float(row["lon"])],
+            radius=7,
+            color=color,
+            fill=True,
+            fill_color=color,
+            fill_opacity=0.8,
+            weight=2,
+            popup=folium.Popup(popup_html, max_width=300),
+            tooltip=folium.Tooltip(
+                f"{row.get('label','') or row.get('ip','') or 'camera'} · {src}",
+                sticky=False,
+            ),
+        ).add_to(m)
+
+    st_folium(m, use_container_width=True, height=560, returned_objects=[])
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 def main():
     init_session()
@@ -2317,6 +2522,11 @@ def main():
         files_dict = st.session_state.files
         active_names = [n for n in files_dict if n in active_names or True]
         active_names = list(files_dict.keys())  # default all visible on first load
+
+    # ── RAVEN: bypass CSV pipeline entirely ──────────────────────────────────
+    if view == "RAVEN":
+        render_raven_view()
+        return
 
     # ── No data state ─────────────────────────────────────────────────────────
     if not files_dict:
@@ -2530,6 +2740,9 @@ def main():
 
     elif view == "Selector":
         render_selector_view()
+
+    elif view == "RAVEN":
+        render_raven_view()
 
     elif view == "Data Table":
         st.markdown('<div class="section-label">Data Table</div>', unsafe_allow_html=True)
