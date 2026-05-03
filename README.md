@@ -1,272 +1,218 @@
-# WRAITH
+# WRAITH-WiGLE
 
-**W**ide-area **R**econnaissance & **A**sset **I**ntelligence **T**racking **H**ub
+**Wide-area Reconnaissance & Asset Intelligence Tracking Hub — WiGLE Module**
 
-WRAITH is a local-first Streamlit application for ingesting camera OSINT datasets, normalizing coordinates, classifying staleness, and visualizing results on globe/map views for analyst workflows.
-
----
-
-## What WRAITH does
-
-- Loads one or more CSV files as independent map layers
-- Normalizes coordinate formats (decimal, combined, MGRS, DMS, UTM)
-- Classifies camera record freshness using `last_seen`
-  - `CURRENT` (<90 days)
-  - `REVIEW` (90–180 days)
-  - `STALE` (180–360 days)
-  - `EXPIRED` (>360 days)
-- Renders:
-  - Globe (orthographic)
-  - Flat map
-  - Heatmap (with basemap controls)
-- Exports combined CSV + BLUF summaries
-- Surfaces coordinate conflicts for correction
-- Tracks collection refresh timelines by `poc_batch`
+A local-first Streamlit ISR analytics platform that ingests WiGLE wireless observation data, tracks selectors (SSID, BSSID, IP, username, network affiliation) across time and space, cross-references enrichment sources, and generates shareable intelligence reports. Part of the WRAITH suite.
 
 ---
 
-## Repository layout
+## Capabilities
 
-```text
-.
-├── app.py                           # Streamlit entrypoint
-├── modules/
-│   ├── ingestion.py                 # CSV ingestion + parsing flow
-│   └── coord_normalizer.py          # Coordinate normalization
-├── scripts/
-│   └── generate_poc_global_dataset.py
-├── data/                            # Sample and generated datasets
-├── docs/                            # Plans, scenarios, templates, session notes
-├── requirements.txt
-├── env.example
-└── .gitignore
-```
+### Core Intelligence Chain
+
+| Layer | Source | What It Surfaces |
+|-------|--------|-----------------|
+| Observations | WiGLE API / CSV | WiFi, cell, Bluetooth signal records with coordinates and timestamps |
+| Heatmap | WiGLE | Signal density overlay on Folium basemap with temporal slider |
+| Globe | WiGLE | Orthographic globe with encryption-color coded pins |
+| Selector Tracking | WiGLE | Field/value query — SSID, BSSID, encryption type, near-camera flag |
+| Co-location | WiGLE | Networks observed within ~1 km of selector, ranked by co-occurrence count |
+| Shodan | Shodan free tier | Exposed devices, open ports, organizations near observation centroid |
+| OSM/Overpass | OpenStreetMap | Nearby amenities, military sites, government buildings within 500 m |
+| Telegram | Public channels | Open-source mentions of selector keyword across configurable channel list |
+| Velocity Analysis | Computed | Haversine movement speed between observations, anomaly flagging at 500 km/h |
+| Entity Co-occurrence | Computed | Entity graph ranked by co-location frequency |
+| Intel Report | Jinja2 | Self-contained dark-theme HTML ISR report + CSV export, one click |
+
+### Key Features
+
+- **Mock-first design** — every enrichment source has a mock fallback; full functionality without live API keys
+- **Session-aware reporting** — HTML report captures whatever enrichment data was loaded during the session
+- **Pure data modules** — no Streamlit imports in modules/; all modules are independently importable
+- **Passive OSINT only** — no active scanning, no unauthorized access, free/open sources only
 
 ---
 
-## Quick start (Windows / VS Code)
+## Quick Start
 
-### 1) Create and activate virtual environment
+### 1. Clone and create virtual environment
 
-```cmd
+```bash
+git clone https://github.com/Virtuvman/WRAITH-WiGLE.git
+cd WRAITH-WiGLE
 python -m venv .venv
+# Windows
 .venv\Scripts\activate
+# macOS/Linux
+source .venv/bin/activate
 ```
 
-### 2) Install dependencies
+### 2. Install dependencies
 
-```cmd
+```bash
 pip install -r requirements.txt
 ```
 
-### 3) Run WRAITH
+### 3. Configure environment
 
-```cmd
+```bash
+cp env.example .env
+# Edit .env — add API keys (all optional; mock mode works without them)
+```
+
+### 4. Run
+
+```bash
 streamlit run app.py
 ```
 
-If port `8501` is busy:
+App opens at `http://localhost:8501`
 
-```cmd
-streamlit run app.py --server.port 8502
+---
+
+## Module Overview
+
+```
+app.py                    # Streamlit entrypoint — all views and UI
+modules/
+  wigle.py                # WiGLE API client + mock data generator
+  selector.py             # Selector query, temporal filter, co-location detection
+  shodan.py               # Shodan free tier IP cross-reference
+  osm.py                  # Overpass API POI enrichment with session cache
+  telegram.py             # Public Telegram channel keyword scraping
+  velocity.py             # Haversine velocity analysis + anomaly detection
+  report.py               # Jinja2 HTML report generator + CSV export
+  ingestion.py            # CSV ingestion + coordinate normalization
+  coord_normalizer.py     # Multi-format coordinate normalization (decimal, MGRS, DMS, UTM)
+  staleness.py            # 4-tier staleness classification (CURRENT/REVIEW/STALE/EXPIRED)
+data/                     # Sample datasets (WiGLE mock, camera OSINT)
+docs/                     # Planning documents, concept briefs
 ```
 
 ---
 
-## Data workflow
+## Configuration
 
-### Option A — Use included sample data
-
-- `sample_cameras.csv`
-- `sample_cameras_decimal.csv`
-- `sample_cameras_combined.csv`
-- `data/poc_global_500.csv`
-- `data/poc_global_500_v2.csv`
-- `data/poc_global_500_v3.csv`
-- `data/poc_global_500_v4.csv`
-- `data/poc_global_500_v5.csv`
-
-### Option B — Generate PoC global dataset
-
-```cmd
-python scripts\generate_poc_global_dataset.py
-```
-
-Outputs:
-- `data/poc_global_500.csv`
-- `poc_global_500.csv`
-- `data/poc_global_500_v2.csv`
-- `data/poc_global_500_v3.csv`
-- `data/poc_global_500_v4.csv`
-- `data/poc_global_500_v5.csv`
-- optional `.xlsx` files if Excel engine is available
-
-Trial profiles (for more varied pilot behavior):
-- `poc_global_500.csv` / `GLOBAL_500_V1`: `baseline`
-- `poc_global_500_v2.csv` / `GLOBAL_500_V2`: `expired_heavy`
-- `poc_global_500_v3.csv` / `GLOBAL_500_V3`: `fresh_asia_focus`
-- `poc_global_500_v4.csv` / `GLOBAL_500_V4`: `americas_hotspot`
-- `poc_global_500_v5.csv` / `GLOBAL_500_V5`: `review_stale_global_mix`
-
-Each row includes a `trial_profile` column for quick filtering/validation.
-
-### Option C — External source ingest
-
-External API-based ingestion is currently disabled by default.
-
-For now, use CSV imports and local generation workflows only.
-
----
-
-## MVP behavior notes (v0.2 baseline)
-
-- **Regions KPI** counts unique geographic values from the `region` column.
-- **Layers KPI** counts active uploaded files/layers.
-- **Collection Schedule** appears in **Alerts & Export**, grouped by `poc_batch` with:
-  - oldest `last_seen`
-  - age in days
-  - countdown to 90 / 180 / 360 day thresholds
-- BLUF language and top alerts align to the 4-tier staleness model.
-
----
-
-## MVP quality check commands
-
-```cmd
-python -m py_compile app.py modules\staleness.py modules\ingestion.py scripts\generate_poc_global_dataset.py
-python scripts\generate_poc_global_dataset.py
-streamlit run app.py
-```
-
----
-
-## GitHub push workflow (recommended)
-
-```cmd
-git pull --rebase origin main
-git add app.py modules/staleness.py modules/ingestion.py README.md CHANGELOG.md env.example wraith_logo.svg "WRAITH Logo.png"
-git commit -m "MVP: 4-tier staleness, region/layer KPIs, collection schedule"
-git push origin main
-```
-
-Optional safer release flow:
-
-```cmd
-git checkout -b release/mvp-0.2.0
-git push -u origin release/mvp-0.2.0
-```
-
-Then open a PR to `main`.
-
----
-
-## Share and publish to select colleagues
-
-1. Keep repository **Private**.
-2. Add colleagues via **Settings → Collaborators**.
-3. Create a GitHub release tag (example: `v0.2.0-mvp`) with notes + screenshots.
-4. Share an onboarding snippet:
-   - clone URL
-   - setup commands
-   - expected sample run (`data/poc_global_500.csv`)
-5. Collect first-user feedback and log in `CHANGELOG.md` / `docs/SESSION_UPDATE_*`.
-
----
-
-## Docs index
-
-- `WRAITH_MASTER_PLAN.md` — high-level roadmap and standards
-- `docs/MASTER_PROMPT.md` — implementation contract / operating style
-- `docs/TEST_SCENARIOS.md` — repeatable validation scenarios
-- `docs/SESSION_UPDATE_2026-03-14.md` — latest session summary
-- `docs/PILOT_ONBOARDING.md` — trial onboarding for non-GitHub peers
-- `docs/PILOT_FEEDBACK_TEMPLATE.md` — structured pilot feedback intake template
-- `docs/templates/` — reusable templates for features, API integrations, QC
-
----
-
-## Security and ethics
-
-- Passive OSINT workflow only
-- No active scanning, no unauthorized access
-- Keep `.env` private (ignored by git)
-- Rotate API keys if exposed
-
-### Admin Metrics Access
-
-- WRAITH includes an admin-only **Metrics** panel for usage and ingest statistics.
-- Configure passphrase in `.env`:
+Copy `env.example` to `.env` and fill in as needed. All keys are optional — mock mode is enabled by default when keys are absent.
 
 ```env
-ADMIN_METRICS_PASSPHRASE=WRAITH_TRIAL_2026!
-```
+# WiGLE API (free account at wigle.net/account)
+WIGLE_API_NAME=your_api_name
+WIGLE_API_TOKEN=your_api_token
 
-- In the sidebar, unlock via **Admin Access → Metrics passphrase**.
-- When unlocked, a `Metrics` panel appears in View navigation.
+# Shodan (free tier at shodan.io)
+SHODAN_API_KEY=your_shodan_key
 
-### Pilot Front-Door App Protection (Recommended for hosted trials)
-
-WRAITH includes an optional full-app password gate for pilot deployments.
-
-- Streamlit Cloud → **App Settings → Secrets**:
-
-```toml
-PILOT_ACCESS_PASSWORD = "WRAITH_TRIAL_2026!"
-PILOT_ACCESS_ENABLED = true
-PILOT_LOCKOUT_SECONDS = 15
-```
-
-- Behavior:
-  - Users must pass front-door password before any app UI loads.
-  - After 3 failed attempts, a short cooldown lockout applies.
-  - `Lock Session` button in sidebar clears access for current session.
-
-You can disable the gate for local/offline debugging with:
-
-```env
+# Pilot access gate (for hosted deployments)
 PILOT_ACCESS_ENABLED=false
+PILOT_ACCESS_PASSWORD=
+
+# Admin metrics panel
+ADMIN_METRICS_PASSPHRASE=
 ```
 
-Local default behavior:
-- WRAITH now defaults `PILOT_ACCESS_ENABLED` to `false` when unset.
-- If explicitly enabled but `PILOT_ACCESS_PASSWORD` is missing, the app warns and bypasses the gate (no hard crash/lockout).
+### WiGLE API Setup
 
-### Logo / Branding
+1. Create a free account at [wigle.net](https://wigle.net)
+2. Accept the API terms at `wigle.net/account`
+3. Copy your API Name and API Token into `.env`
+4. In the sidebar: enable WiGLE → enter coordinates → Fetch
 
-- Place logo assets in project root:
-  - `wraith_logo.svg` (inline header logo)
-  - `wraith_logo.png` (preferred favicon/tab icon)
-- App behavior:
-  - `page_icon` uses `wraith_logo.png` first, then `wraith_logo.svg`, then `👻` fallback.
-  - Header logo renders inline from `wraith_logo.svg` when present.
-- If favicon does not update immediately, hard-refresh the browser cache.
-
-### Optional Splash Background
-
-You can enable a full-page splash/dashboard background image in Streamlit.
-
-1. Add image file (example):
-   - `assets/wraith_splash.png`
-2. In `.env`:
-
-```env
-ENABLE_SPLASH=true
-SPLASH_BACKGROUND_PATH=assets/wraith_splash.png
-SPLASH_OVERLAY_ALPHA=0.35
-```
-
-Notes:
-- `SPLASH_OVERLAY_ALPHA` controls readability overlay (0.0–0.9).
-- If the image path is missing/invalid, WRAITH automatically tries logo fallbacks:
-  - `WRAITH Logo.png`
-  - `wraith_logo.png`
-  - `wraith_logo.svg`
-- Recommended: optimize splash image size (compressed PNG/WebP) for faster load.
+Without a WiGLE key, the app operates in mock mode — all views, selectors, and enrichment work with generated data.
 
 ---
 
-## Current status
+## Views
 
-- Heatmap detail controls added (basemap, clustering, minimap, sizing)
-- Heatmap serialization crash fixed by removing explicit custom gradient
-- Dataset generator now dependency-light (no hard pandas requirement)
+### WiGLE Heatmap
+Signal density overlay with temporal filter (date range slider). Toggle WiGLE layer independently from camera layers.
+
+### Selector View
+Main ISR workflow. Enter a selector value (e.g. `xfinitywifi`, a BSSID, or an IP fragment) and the app:
+1. Filters WiGLE observations matching the selector
+2. Detects co-located networks within ~1 km
+3. Queries Shodan for exposed devices near the observation centroid
+4. Queries Overpass for nearby points of interest
+5. Searches Telegram public channels for keyword mentions
+6. Computes movement velocity and flags anomalies
+7. Renders entity co-occurrence ranked table
+8. Provides one-click HTML + CSV export at the bottom
+
+### Globe / Flat Map / Heatmap
+Standard WRAITH camera OSINT views — multi-layer CSV upload, staleness classification, coordinate normalization.
+
+---
+
+## Intel Report Export
+
+The **Export Intelligence Report** section appears at the bottom of the Selector view when filtered observations exist.
+
+- **Download HTML Report** — self-contained dark-theme HTML with:
+  - KPI summary row (observation count, co-located networks, anomalies, Shodan devices, POIs, Telegram mentions)
+  - Full observations table
+  - Co-location table
+  - Movement analysis with anomaly summary
+  - Shodan devices (if queried this session)
+  - OSM POIs (if queried this session)
+  - Telegram mentions (if searched this session)
+  - Filename: `wraith_intel_{selector}_{date}.html`
+
+- **Download CSV** — raw filtered observations
+  - Filename: `wraith_obs_{selector}_{date}.csv`
+
+The HTML report is fully self-contained — no external CSS, no CDN. Opens in any browser, works offline.
+
+---
+
+## Dependency Notes
+
+```
+folium==0.17.0    # pinned — HeatMap serialization regression in later versions
+branca==0.7.2     # pinned — paired with folium
+```
+
+Do not upgrade the folium/branca pair without testing HeatMap layer serialization.
+
+Jinja2 is already installed as a Streamlit dependency — no separate install needed.
+
+---
+
+## Security & Ethics
+
+- **Passive OSINT only** — no active scanning, no unauthorized network access
+- **Free/open sources only** — WiGLE (non-commercial), Shodan (free tier), OSM (ODbL), Telegram (public channels)
+- **`.env` is gitignored** — never commit API keys
+- **Local-first by default** — no data leaves your machine unless you configure a hosted deployment
+- Data handling must respect WiGLE non-commercial terms and OpenStreetMap ODbL license
+
+---
+
+## WRAITH Suite
+
+| App | Focus | Status |
+|-----|-------|--------|
+| WRAITH-WiGLE | OSINT monitoring — wireless selector tracking, ISR pattern analysis | Active (v0.2) |
+| WRAITH-Sentinel | Real-time operational watch — alerts, TAK integration, APScheduler | Concept ([docs/WRAITH-SENTINEL-CONCEPT.md](docs/WRAITH-SENTINEL-CONCEPT.md)) |
+
+---
+
+## Roadmap
+
+### Shipped
+
+- v0.1 WiGLE Core — ingestion, heatmap, selector tracking, Shodan, OSM, Telegram, velocity, entity graph
+- v0.2 Intel Export — HTML ISR report + CSV export from Selector view
+
+### Deferred (pending API key strategy)
+
+- v0.3 IP Reputation — AbuseIPDB + GreyNoise + Censys cross-reference layer
+
+---
+
+## Version
+
+`v0.2.0` — April 2026
+
+---
+
+*WRAITH-WiGLE is part of the WRAITH suite by [Virtuvman](https://github.com/Virtuvman)*

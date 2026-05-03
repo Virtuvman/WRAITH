@@ -1,0 +1,25 @@
+{
+  "name": "WRAITH-WiGLE",
+  "version": "0.3.0",
+  "milestone": {
+    "name": "v0.3 RAVEN Camera Intelligence",
+    "version": "0.3.0",
+    "status": "in_progress"
+  },
+  "phase": {
+    "number": 8,
+    "name": "raven-ingest",
+    "status": "not_started"
+  },
+  "loop": {
+    "plan": null,
+    "position": "IDLE"
+  },
+  "timestamps": {
+    "created_at": "2026-04-04T00:00:00Z",
+    "updated_at": "2026-05-02T00:00:00Z"
+  },
+  "satellite": {
+    "groom": true
+  }
+}

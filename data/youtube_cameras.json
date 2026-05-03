@@ -1,0 +1,152 @@
+{
+  "_note": "Curate active YouTube live stream video IDs. Thumbnail URL: https://img.youtube.com/vi/{video_id}/hqdefault.jpg",
+  "cameras": [
+    {
+      "video_id": "tSHzb9VsRuU",
+      "name": "Times Square Live Cam",
+      "city": "New York",
+      "country": "US",
+      "lat": 40.7580,
+      "lon": -73.9855,
+      "tags": ["traffic", "youtube", "nyc"]
+    },
+    {
+      "video_id": "REPLACE_WITH_LIVE_ID",
+      "note": "Replace with active YouTube live stream ID",
+      "name": "I-405 Hollywood Freeway",
+      "city": "Los Angeles",
+      "country": "US",
+      "lat": 34.0522,
+      "lon": -118.2437,
+      "tags": ["traffic", "youtube", "freeway"]
+    },
+    {
+      "video_id": "REPLACE_WITH_LIVE_ID",
+      "note": "Replace with active YouTube live stream ID",
+      "name": "Chicago Loop Traffic",
+      "city": "Chicago",
+      "country": "US",
+      "lat": 41.8827,
+      "lon": -87.6233,
+      "tags": ["traffic", "youtube", "downtown"]
+    },
+    {
+      "video_id": "REPLACE_WITH_LIVE_ID",
+      "note": "Replace with active YouTube live stream ID",
+      "name": "Houston I-10 Katy Freeway",
+      "city": "Houston",
+      "country": "US",
+      "lat": 29.7604,
+      "lon": -95.3698,
+      "tags": ["traffic", "youtube", "freeway"]
+    },
+    {
+      "video_id": "REPLACE_WITH_LIVE_ID",
+      "note": "Replace with active YouTube live stream ID",
+      "name": "Phoenix I-17 Live",
+      "city": "Phoenix",
+      "country": "US",
+      "lat": 33.4484,
+      "lon": -112.0740,
+      "tags": ["traffic", "youtube", "highway"]
+    },
+    {
+      "video_id": "aqz-KE-bpKQ",
+      "name": "Philadelphia City Hall Cam",
+      "city": "Philadelphia",
+      "country": "US",
+      "lat": 39.9526,
+      "lon": -75.1652,
+      "tags": ["traffic", "youtube", "downtown"]
+    },
+    {
+      "video_id": "REPLACE_WITH_LIVE_ID",
+      "note": "Replace with active YouTube live stream ID",
+      "name": "San Antonio River Walk",
+      "city": "San Antonio",
+      "country": "US",
+      "lat": 29.4241,
+      "lon": -98.4936,
+      "tags": ["traffic", "youtube", "urban"]
+    },
+    {
+      "video_id": "REPLACE_WITH_LIVE_ID",
+      "note": "Replace with active YouTube live stream ID",
+      "name": "San Diego I-5 Corridor",
+      "city": "San Diego",
+      "country": "US",
+      "lat": 32.7157,
+      "lon": -117.1611,
+      "tags": ["traffic", "youtube", "freeway"]
+    },
+    {
+      "video_id": "REPLACE_WITH_LIVE_ID",
+      "note": "Replace with active YouTube live stream ID",
+      "name": "Dallas I-635 LBJ Freeway",
+      "city": "Dallas",
+      "country": "US",
+      "lat": 32.7767,
+      "lon": -96.7970,
+      "tags": ["traffic", "youtube", "freeway"]
+    },
+    {
+      "video_id": "REPLACE_WITH_LIVE_ID",
+      "note": "Replace with active YouTube live stream ID",
+      "name": "San Jose Downtown Camera",
+      "city": "San Jose",
+      "country": "US",
+      "lat": 37.3382,
+      "lon": -121.8863,
+      "tags": ["traffic", "youtube", "downtown"]
+    },
+    {
+      "video_id": "AdUw5RdyZxI",
+      "name": "Atlanta I-285 Perimeter",
+      "city": "Atlanta",
+      "country": "US",
+      "lat": 33.7490,
+      "lon": -84.3880,
+      "tags": ["traffic", "youtube", "highway"]
+    },
+    {
+      "video_id": "REPLACE_WITH_LIVE_ID",
+      "note": "Replace with active YouTube live stream ID",
+      "name": "Seattle I-5 Downtown",
+      "city": "Seattle",
+      "country": "US",
+      "lat": 47.6062,
+      "lon": -122.3321,
+      "tags": ["traffic", "youtube", "freeway"]
+    },
+    {
+      "video_id": "REPLACE_WITH_LIVE_ID",
+      "note": "Replace with active YouTube live stream ID",
+      "name": "Denver I-25 Live Feed",
+      "city": "Denver",
+      "country": "US",
+      "lat": 39.7392,
+      "lon": -104.9903,
+      "tags": ["traffic", "youtube", "highway"]
+    },
+    {
+      "video_id": "REPLACE_WITH_LIVE_ID",
+      "note": "Replace with active YouTube live stream ID",
+      "name": "Las Vegas Strip Cam",
+      "city": "Las Vegas",
+      "country": "US",
+      "lat": 36.1699,
+      "lon": -115.1398,
+      "tags": ["traffic", "youtube", "urban"]
+    },
+    {
+      "video_id": "REPLACE_WITH_LIVE_ID",
+      "note": "Replace with active YouTube live stream ID",
+      "name": "Miami I-95 South Corridor",
+      "city": "Miami",
+      "country": "US",
+      "lat": 25.7617,
+      "lon": -80.1918,
+      "tags": ["traffic", "youtube", "freeway"]
+    }
+  ]
+}

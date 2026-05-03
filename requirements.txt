@@ -1,13 +1,32 @@
-# CAMWATCH — Python Dependencies
-# Install all at once: pip install -r requirements.txt
+# WRAITH-WiGLE — Python Dependencies
+# Install: pip install -r requirements.txt
 
+# Core UI
 streamlit>=1.35.0
+
+# Data
 pandas>=2.0.0
+
+# Visualization
 plotly>=5.20.0
-# Pin folium/branca pair to avoid known HeatMap serialization regressions.
+# Pin folium/branca pair — HeatMap serialization regression in later versions
 folium==0.17.0
 branca==0.7.2
 streamlit-folium>=0.20.0
-python-dotenv>=1.0.0
+
+# HTTP / API clients
+requests>=2.31.0
+
+# Image processing (optional — enables thumbnail resize in RAVEN media view)
+Pillow>=10.0.0
+
+# Geospatial
 mgrs>=1.4.0
+
+# Config
+python-dotenv>=1.0.0
+
+# Scheduling (optional — used by APScheduler features)
 apscheduler>=3.10.0
+
+# NOTE: jinja2 is installed automatically as a Streamlit dependency — no separate entry needed
