@@ -128,11 +128,14 @@ def _detect_format(data: dict) -> str:
     return "unknown"
 
 
-def load_raven_file(filepath: str) -> pd.DataFrame:
-    """Load a Shodan or FOFA JSON export and return a RAVEN schema DataFrame."""
+def load_raven_file(filepath) -> pd.DataFrame:
+    """Load a Shodan or FOFA JSON export from a filepath or file-like object."""
     try:
-        path = Path(filepath)
-        text = path.read_text(encoding="utf-8")
+        if hasattr(filepath, "read"):
+            raw = filepath.read()
+            text = raw.decode("utf-8") if isinstance(raw, bytes) else raw
+        else:
+            text = Path(filepath).read_text(encoding="utf-8")
 
         # Support newline-delimited JSON (one record per line)
         lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
@@ -161,6 +164,84 @@ def load_raven_file(filepath: str) -> pd.DataFrame:
 
     except Exception as exc:
         log.error("raven_ingest.load_raven_file error: %s", exc)
+        return pd.DataFrame(columns=RAVEN_SCHEMA_COLUMNS)
+
+
+_CSV_COLUMN_ALIASES = {
+    "latitude": "lat",
+    "longitude": "lon",
+    "location_label": "label",
+    "name": "label",
+    "camera_name": "label",
+    "title": "label",
+    "screenshot": "image_b64",
+    "base64_screenshot": "image_b64",
+    "base64": "image_b64",
+    "image": "image_b64",
+    "thumb": "image_b64",
+    "url": "image_url",
+    "snapshot_url": "image_url",
+    "ip_str": "ip",
+    "ip_address": "ip",
+    "organization": "org",
+    "as_organization": "org",
+    "isp": "org",
+    "model": "product",
+    "product_name": "product",
+    "device_type": "product",
+    "tag": "tags",
+    "ts": "timestamp",
+    "last_seen": "timestamp",
+    "lastupdatetime": "timestamp",
+    "updated_time": "timestamp",
+    "meta": "metadata",
+}
+
+
+def load_raven_csv(src) -> pd.DataFrame:
+    """Load a CSV (filepath, Path, or file-like) and normalize to RAVEN schema.
+
+    Applies _CSV_COLUMN_ALIASES for common column name variants.
+    Handles a 'coordinates' column formatted as 'lat, lon' string.
+    Missing RAVEN_SCHEMA_COLUMNS are added as None.
+    """
+    try:
+        df = pd.read_csv(src)
+        df.columns = [c.strip().lower() for c in df.columns]
+
+        # Split combined 'coordinates' column ("lat, lon") into lat/lon
+        if "coordinates" in df.columns and "lat" not in df.columns:
+            split = df["coordinates"].str.split(",", n=1, expand=True)
+            df["lat"] = split[0].str.strip()
+            df["lon"] = split[1].str.strip() if split.shape[1] > 1 else None
+            df = df.drop(columns=["coordinates"])
+
+        # Build rename map: first alias match per target wins; skip if target already a column
+        seen_targets: set = set()
+        rename_map: dict = {}
+        for src_col, tgt_col in _CSV_COLUMN_ALIASES.items():
+            if src_col in df.columns and tgt_col not in df.columns and tgt_col not in seen_targets:
+                rename_map[src_col] = tgt_col
+                seen_targets.add(tgt_col)
+        df = df.rename(columns=rename_map)
+
+        for col in RAVEN_SCHEMA_COLUMNS:
+            if col not in df.columns:
+                df[col] = None
+
+        df["lat"] = df["lat"].apply(_safe_float)
+        df["lon"] = df["lon"].apply(_safe_float)
+        df["tags"] = df["tags"].apply(
+            lambda v: v if isinstance(v, list) else []
+        )
+        df["metadata"] = df["metadata"].apply(
+            lambda v: v if isinstance(v, dict) else {}
+        )
+
+        return df[RAVEN_SCHEMA_COLUMNS].reset_index(drop=True)
+
+    except Exception as exc:
+        log.error("raven_ingest.load_raven_csv error: %s", exc)
         return pd.DataFrame(columns=RAVEN_SCHEMA_COLUMNS)
 
 
